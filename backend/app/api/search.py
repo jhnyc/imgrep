@@ -20,7 +20,7 @@ class SearchResult(BaseModel):
 
 class TextSearchRequest(BaseModel):
     query: str
-    top_k: int = 20
+    top_k: int = 1
 
 
 class TextSearchResponse(BaseModel):
@@ -92,11 +92,11 @@ async def search_by_text(request: TextSearchRequest):
                 thumbnail_url=f"/api/thumbnails/{img.thumbnail_path}" if img.thumbnail_path else "",
             ))
 
-    return TextSearchResponse(results=results, total=len(image_embeddings))
+    return TextSearchResponse(results=results, total=len(results))
 
 
 @router.post("/image", response_model=ImageSearchResponse)
-async def search_by_image(file: UploadFile = File(...), top_k: int = 20):
+async def search_by_image(file: UploadFile = File(...), top_k: int = 1):
     """Search images by uploaded image (reverse image search)"""
     # Check file type
     if not file.content_type or not file.content_type.startswith("image/"):
@@ -142,4 +142,4 @@ async def search_by_image(file: UploadFile = File(...), top_k: int = 20):
                 thumbnail_url=f"/api/thumbnails/{img.thumbnail_path}" if img.thumbnail_path else "",
             ))
 
-    return ImageSearchResponse(results=results, total=len(image_embeddings))
+    return ImageSearchResponse(results=results, total=len(results))

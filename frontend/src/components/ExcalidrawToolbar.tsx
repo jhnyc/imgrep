@@ -4,12 +4,14 @@ import {
     ChevronDown,
     Clock,
     Crosshair,
+    FolderOpen,
     FolderPlus,
     Lock,
     MousePointer2,
     RefreshCw,
     Search,
     Unlock,
+    Upload,
     X
 } from 'lucide-react';
 import React, { useEffect, useRef, useState } from 'react';
@@ -18,6 +20,7 @@ import { api } from '../api/client';
 
 interface ExcalidrawToolbarProps {
     onAddDirectory: (path: string) => Promise<void>;
+    onUploadFiles: (files: FileList) => Promise<void>;
     onRefresh: () => void;
     isLoadingClusters: boolean;
     totalImages?: number;
@@ -32,6 +35,7 @@ type SortOption = 'name' | 'newest' | 'oldest';
 
 export default function ExcalidrawToolbar({
     onAddDirectory,
+    onUploadFiles,
     onRefresh,
     isLoadingClusters,
     totalImages,
@@ -47,6 +51,7 @@ export default function ExcalidrawToolbar({
     const [directoryPath, setDirectoryPath] = useState('');
     const [isAddingDir, setIsAddingDir] = useState(false);
     const [addDirError, setAddDirError] = useState<string | null>(null);
+    const [isDraggingFolder, setIsDraggingFolder] = useState(false);
 
     // Stats dropdown state
     const [filenameSearch, setFilenameSearch] = useState('');
@@ -282,46 +287,199 @@ export default function ExcalidrawToolbar({
                         >
                             <X size={16} strokeWidth={2} />
                         </button>
-                        <h3 className="font-semibold text-gray-800 text-base mb-4">Add Directory</h3>
+                        <h3 className="font-semibold text-gray-800 text-base mb-4">Add Images</h3>
 
-                        <form onSubmit={handleAddDirSubmit} className="space-y-4">
-                            <div>
-                                <label className="text-xs font-medium text-gray-500 block mb-2">Absolute Path</label>
+                        {/* Drag & Drop Zone */}
+                        <div
+                            className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${isDraggingFolder
+                                ? 'border-blue-400 bg-blue-50/50'
+                                : 'border-gray-200 hover:border-gray-300'
+                                }`}
+                            onDragOver={(e) => {
+                                e.preventDefault();
+                                setIsDraggingFolder(true);
+                            }}
+                            onDragLeave={(e) => {
+                                e.preventDefault();
+                                setIsDraggingFolder(false);
+                            }}
+                            onDrop={async (e) => {
+                                e.preventDefault();
+                                setIsDraggingFolder(false);
+
+                                const files: File[] = [];
+                                const items = e.dataTransfer.items;
+
+                                if (items) {
+                                    // Handle dropped files/folders
+                                    const entries: FileSystemEntry[] = [];
+                                    for (let i = 0; i < items.length; i++) {
+                                        const entry = items[i].webkitGetAsEntry?.();
+                                        if (entry) entries.push(entry);
+                                    }
+
+                                    // Recursively read all files from dropped items
+                                    const readEntries = async (entry: FileSystemEntry): Promise<void> => {
+                                        if (entry.isFile) {
+                                            const file = await new Promise<File>((resolve) => {
+                                                (entry as FileSystemFileEntry).file(resolve);
+                                            });
+                                            if (file.type.startsWith('image/')) {
+                                                files.push(file);
+                                            }
+                                        } else if (entry.isDirectory) {
+                                            const reader = (entry as FileSystemDirectoryEntry).createReader();
+                                            const entries = await new Promise<FileSystemEntry[]>((resolve) => {
+                                                reader.readEntries(resolve);
+                                            });
+                                            for (const subEntry of entries) {
+                                                await readEntries(subEntry);
+                                            }
+                                        }
+                                    };
+
+                                    for (const entry of entries) {
+                                        await readEntries(entry);
+                                    }
+                                } else {
+                                    // Fallback: use dataTransfer.files
+                                    for (let i = 0; i < e.dataTransfer.files.length; i++) {
+                                        const file = e.dataTransfer.files[i];
+                                        if (file.type.startsWith('image/')) {
+                                            files.push(file);
+                                        }
+                                    }
+                                }
+
+                                if (files.length > 0) {
+                                    const fileList = new DataTransfer();
+                                    files.forEach(f => fileList.items.add(f));
+                                    setIsAddingDir(true);
+                                    try {
+                                        await onUploadFiles(fileList.files);
+                                        closeModal();
+                                    } catch (error: any) {
+                                        setAddDirError(error.message || 'Failed to upload files');
+                                    } finally {
+                                        setIsAddingDir(false);
+                                    }
+                                }
+                            }}
+                        >
+                            {isAddingDir ? (
+                                <RefreshCw size={32} strokeWidth={1.5} className="mx-auto text-blue-500 mb-3 animate-spin" />
+                            ) : (
+                                <Upload size={32} strokeWidth={1.5} className="mx-auto text-gray-400 mb-3" />
+                            )}
+                            <p className="text-sm text-gray-600 font-medium">
+                                {isAddingDir ? 'Uploading images...' : 'Drop images or folder here'}
+                            </p>
+                            <p className="text-xs text-gray-400 mt-1">or select files below</p>
+                        </div>
+
+                        {/* File Picker Buttons */}
+                        <div className="mt-4 flex gap-2">
+                            <label className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-xl cursor-pointer transition-all flex items-center justify-center gap-2 text-sm font-medium text-gray-600">
+                                <FolderOpen size={18} strokeWidth={2} />
+                                <span>Select Folder</span>
                                 <input
-                                    type="text"
-                                    value={directoryPath}
-                                    onChange={(e) => {
-                                        setDirectoryPath(e.target.value);
-                                        setAddDirError(null);
+                                    type="file"
+                                    webkitdirectory
+                                    directory
+                                    multiple
+                                    className="hidden"
+                                    onChange={async (e) => {
+                                        const files = e.target.files;
+                                        if (files && files.length > 0) {
+                                            setIsAddingDir(true);
+                                            setAddDirError(null);
+                                            try {
+                                                await onUploadFiles(files);
+                                                closeModal();
+                                            } catch (error: any) {
+                                                setAddDirError(error.message || 'Failed to upload files');
+                                            } finally {
+                                                setIsAddingDir(false);
+                                            }
+                                        }
                                     }}
-                                    className={`w-full px-3 py-2.5 rounded-xl border bg-gray-50/50 focus:outline-none focus:ring-2 transition-all font-mono text-sm ${addDirError
-                                        ? 'border-red-300 focus:ring-red-100 focus:border-red-400'
-                                        : 'border-gray-200 focus:ring-blue-500/20 focus:border-blue-400'
-                                        }`}
-                                    placeholder="/Users/name/Photos"
-                                    autoFocus
                                 />
+                            </label>
+                            <label className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-xl cursor-pointer transition-all flex items-center justify-center gap-2 text-sm font-medium text-gray-600">
+                                <Upload size={18} strokeWidth={2} />
+                                <span>Select Files</span>
+                                <input
+                                    type="file"
+                                    accept="image/*"
+                                    multiple
+                                    className="hidden"
+                                    onChange={async (e) => {
+                                        const files = e.target.files;
+                                        if (files && files.length > 0) {
+                                            setIsAddingDir(true);
+                                            setAddDirError(null);
+                                            try {
+                                                await onUploadFiles(files);
+                                                closeModal();
+                                            } catch (error: any) {
+                                                setAddDirError(error.message || 'Failed to upload files');
+                                            } finally {
+                                                setIsAddingDir(false);
+                                            }
+                                        }
+                                    }}
+                                />
+                            </label>
+                        </div>
+
+                        {/* Manual Path Entry */}
+                        <div className="mt-4 pt-4 border-t border-gray-100">
+                            <p className="text-xs text-gray-400 text-center mb-2">Or enter server path directly</p>
+                            <form onSubmit={async (e) => {
+                                e.preventDefault();
+                                if (!directoryPath.trim()) return;
+                                setIsAddingDir(true);
+                                setAddDirError(null);
+                                try {
+                                    await onAddDirectory(directoryPath.trim());
+                                    setDirectoryPath('');
+                                    closeModal();
+                                } catch (error: any) {
+                                    setAddDirError(error.message || 'Failed to add directory');
+                                } finally {
+                                    setIsAddingDir(false);
+                                }
+                            }}>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="text"
+                                        value={directoryPath}
+                                        onChange={(e) => {
+                                            setDirectoryPath(e.target.value);
+                                            setAddDirError(null);
+                                        }}
+                                        className={`flex-1 px-3 py-2 rounded-xl border bg-gray-50/50 focus:outline-none focus:ring-2 transition-all font-mono text-sm ${addDirError
+                                            ? 'border-red-300 focus:ring-red-100 focus:border-red-400'
+                                            : 'border-gray-200 focus:ring-blue-500/20 focus:border-blue-400'
+                                            }`}
+                                        placeholder="/Users/name/Photos"
+                                    />
+                                    <button
+                                        type="submit"
+                                        disabled={isAddingDir || !directoryPath.trim()}
+                                        className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
+                                    >
+                                        Add
+                                    </button>
+                                </div>
                                 {addDirError && (
                                     <p className="text-red-500 text-xs mt-2 font-medium flex items-center gap-1">
                                         <X size={12} strokeWidth={2} />
                                         {addDirError}
                                     </p>
                                 )}
-                            </div>
-
-                            <button
-                                type="submit"
-                                disabled={isAddingDir || !directoryPath.trim()}
-                                className="w-full py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-all flex items-center justify-center gap-2 text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                {isAddingDir ? (
-                                    <RefreshCw size={16} strokeWidth={2} className="animate-spin" />
-                                ) : (
-                                    <FolderPlus size={16} strokeWidth={2} />
-                                )}
-                                <span>Start Processing</span>
-                            </button>
-                        </form>
+                            </form>
+                        </div>
                     </div>
                 </div>
             )}

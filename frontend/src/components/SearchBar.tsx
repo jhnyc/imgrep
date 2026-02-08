@@ -18,7 +18,7 @@ export default function SearchBar({ onSearch, onClearSearch, hasActiveSearch }: 
 
         setIsSearching(true);
         try {
-            const results = await api.searchText(searchQuery, 50);
+            const results = await api.searchText(searchQuery, 1);
             const resultIds = results.results.map((r) => r.image_id);
             onSearch(resultIds);
         } catch (error) {
@@ -33,7 +33,7 @@ export default function SearchBar({ onSearch, onClearSearch, hasActiveSearch }: 
 
         setIsSearching(true);
         try {
-            const results = await api.searchImage(file, 50);
+            const results = await api.searchImage(file, 1);
             const resultIds = results.results.map((r) => r.image_id);
             onSearch(resultIds);
         } catch (error) {

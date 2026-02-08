@@ -16,13 +16,8 @@ UPLOADS_DIR = DATA_DIR / "uploads"
 # API Configuration
 JINA_API_KEY = os.getenv("JINA_API_KEY")
 if not JINA_API_KEY:
-    # Fallback for development - you should set your own key via .env
-    JINA_API_KEY = "jina_78416db0a9e946d68e95083b12f19d76tIxu_76xYNOnRNPqaZa-DL2rDmsP"
-    import warnings
-    warnings.warn(
-        "Using hardcoded JINA API key. Set JINA_API_KEY environment variable for production.",
-        stacklevel=1
-    )
+    raise Exception("JINA API key not set. Set JINA_API_KEY environment variable for production.")
+
 JINA_API_URL = os.getenv("JINA_API_URL", "https://api.jina.ai/v1/embeddings")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "jina-clip-v2")
 
@@ -44,7 +39,7 @@ THUMBNAIL_SIZE = int(os.getenv("THUMBNAIL_SIZE", "256"))
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tiff"}
 
 # Embedding Configuration
-DEFAULT_BATCH_SIZE = int(os.getenv("DEFAULT_BATCH_SIZE", "12"))
+DEFAULT_BATCH_SIZE = int(os.getenv("DEFAULT_BATCH_SIZE", "2"))
 EMBEDDING_TIMEOUT = float(os.getenv("EMBEDDING_TIMEOUT", "60.0"))
 
 # Clustering Configuration

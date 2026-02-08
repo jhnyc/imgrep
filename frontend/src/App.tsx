@@ -44,8 +44,33 @@ function App() {
     }
   };
 
+  const handleUploadFiles = async (files: FileList) => {
+    try {
+      const result = await api.uploadFiles(files);
+
+      const pollJob = async () => {
+        const status = await api.getJobStatus(result.job_id);
+        if (status.status === 'completed') {
+          refetchClusters();
+        } else if (status.status === 'error') {
+          console.error('Job failed:', status.errors);
+        } else {
+          setTimeout(pollJob, 1000);
+        }
+      };
+      setTimeout(pollJob, 1000);
+    } catch (error) {
+      console.error('Failed to upload files:', error);
+      throw error;
+    }
+  };
+
   const handleSearch = (resultIds: number[]) => {
     setSearchResults(resultIds);
+    // Focus on the most similar result (first one)
+    if (resultIds.length > 0 && focusOnImageRef.current) {
+      focusOnImageRef.current(resultIds[0]);
+    }
   };
 
   const clearSearch = () => {
@@ -80,6 +105,7 @@ function App() {
     <div className="w-full h-screen excalidraw-bg overflow-hidden relative">
       <ExcalidrawToolbar
         onAddDirectory={handleAddDirectory}
+        onUploadFiles={handleUploadFiles}
         onRefresh={() => refetchClusters()}
         isLoadingClusters={isLoadingClusters}
         totalImages={clustersData?.total_images}
