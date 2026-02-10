@@ -126,7 +126,7 @@ async def test_embed_image_base64_encoding():
 @pytest.mark.asyncio
 async def test_real_api_error_handling():
     """Test that the API properly handles and raises errors."""
-    from app.embeddings import JINA_API_URL, JINA_API_KEY, MODEL_NAME
+    from app.constants import JINA_API_URL, JINA_API_KEY, EMBEDDING_MODEL
     import httpx
 
     # Use an invalid endpoint to trigger an error
@@ -137,7 +137,7 @@ async def test_real_api_error_handling():
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {JINA_API_KEY}"
             },
-            json={"model": MODEL_NAME, "input": [{"text": ""}]}  # Empty text might error
+            json={"model": EMBEDDING_MODEL, "input": [{"text": ""}]}  # Empty text might error
         )
 
         # Either it works or fails with proper error code

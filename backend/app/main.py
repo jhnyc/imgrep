@@ -14,6 +14,8 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown"""
     # Startup
     await init_db()
+    from .sync import sync_sqlite_to_chroma
+    await sync_sqlite_to_chroma()
 
     yield
 

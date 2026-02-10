@@ -55,3 +55,7 @@ ALLOWED_DIRECTORY_PREFIXES = os.getenv("ALLOWED_DIRECTORY_PREFIXES", "").split("
 THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 DB_DIR.mkdir(parents=True, exist_ok=True)
+
+# Chroma configuration
+CHROMA_DATA_PATH = DATA_DIR / "chroma"
+CHROMA_COLLECTION_NAME = "images"

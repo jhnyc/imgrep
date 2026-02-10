@@ -110,6 +110,12 @@ async def process_directory_job(
 
         # Save to database
         async with AsyncSessionLocal() as session:
+            from ..chroma import chroma_manager
+            
+            chroma_ids = []
+            chroma_embeddings = []
+            chroma_metadatas = []
+
             for i, (img_path, file_hash, thumb_path, metadata) in enumerate(thumbnails_to_embed):
                 if i >= len(embeddings):
                     break
@@ -130,8 +136,25 @@ async def process_directory_job(
                     embedding_id=embedding.id,
                 )
                 session.add(image)
+                await session.flush() # Flush to get image.id
+
+                # Prepare for Chroma
+                chroma_ids.append(str(image.id))
+                chroma_embeddings.append(embeddings[i])
+                chroma_metadatas.append({
+                    "file_hash": file_hash,
+                    "file_path": str(img_path)
+                })
 
             await session.commit()
+
+            # Batch add to Chroma after commit
+            if chroma_ids:
+                chroma_manager.add_embeddings(
+                    ids=chroma_ids,
+                    embeddings=chroma_embeddings,
+                    metadatas=chroma_metadatas
+                )
 
         _active_jobs[job_id]["status"] = "completed"
         _active_jobs[job_id]["progress"] = 1.0

@@ -6,8 +6,9 @@ import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
 
 from ..embeddings import embed_text_async, embed_image_bytes_async
-from ..database import get_all_embeddings
+from ..database import AsyncSessionLocal
 from ..models import Image
+from ..chroma import chroma_manager
 
 router = APIRouter(prefix="/api/search", tags=["search"])
 
@@ -33,57 +34,36 @@ class ImageSearchResponse(BaseModel):
     total: int
 
 
-def find_similar_images(
-    query_embedding: np.ndarray,
-    image_embeddings: dict,
-    top_k: int = 20
-) -> List[tuple[int, float]]:
-    """Find top-k similar images by cosine similarity"""
-    image_ids = list(image_embeddings.keys())
-    embeddings_matrix = np.array([image_embeddings[id] for id in image_ids])
-
-    # Compute similarities
-    similarities = cosine_similarity([query_embedding], embeddings_matrix)[0]
-
-    # Get top-k
-    top_indices = np.argsort(similarities)[::-1][:top_k]
-    return [(int(image_ids[i]), float(similarities[i])) for i in top_indices]
-
-
 @router.post("/text", response_model=TextSearchResponse)
 async def search_by_text(request: TextSearchRequest):
     """Search images by text query"""
     if not request.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty")
 
-    # Get all embeddings
-    image_embeddings = await get_all_embeddings()
-    if not image_embeddings:
-        return TextSearchResponse(results=[], total=0)
-
     # Embed query
     query_embedding = await embed_text_async(request.query)
-    query_np = np.array(query_embedding)
 
-    # Find similar images
-    similar_images = find_similar_images(query_np, image_embeddings, request.top_k)
+    # Search in Chroma
+    chroma_results = chroma_manager.search_by_vector(query_embedding, request.top_k)
+    
+    if not chroma_results["ids"] or not chroma_results["ids"][0]:
+        return TextSearchResponse(results=[], total=chroma_manager.collection.count())
 
-    # Get thumbnail URLs
-    from ..database import AsyncSessionLocal
-    from sqlalchemy import select
+    image_ids = [int(id_) for id_ in chroma_results["ids"][0]]
+    # Distances in Chroma with cosine space are (1 - cosine_similarity)
+    # So similarity = 1 - distance
+    similarities = [1.0 - float(dist) for dist in chroma_results["distances"][0]]
 
+    # Get thumbnail URLs from SQLite
     async with AsyncSessionLocal() as session:
-        image_ids = [img_id for img_id, _ in similar_images]
-        if not image_ids:
-            return TextSearchResponse(results=[], total=0)
-
+        from sqlalchemy import select
         result = await session.execute(
             select(Image).where(Image.id.in_(image_ids))
         )
         images = {img.id: img for img in result.scalars().all()}
 
     results = []
-    for img_id, similarity in similar_images:
+    for img_id, similarity in zip(image_ids, similarities):
         img = images.get(img_id)
         if img:
             results.append(SearchResult(
@@ -92,7 +72,10 @@ async def search_by_text(request: TextSearchRequest):
                 thumbnail_url=f"/api/thumbnails/{img.thumbnail_path}" if img.thumbnail_path else "",
             ))
 
-    return TextSearchResponse(results=results, total=len(results))
+    return TextSearchResponse(
+        results=results,
+        total=chroma_manager.collection.count()
+    )
 
 
 @router.post("/image", response_model=ImageSearchResponse)
@@ -108,32 +91,26 @@ async def search_by_image(file: UploadFile = File(...), top_k: int = 1):
         raise HTTPException(status_code=400, detail="Empty file")
 
     query_embedding = await embed_image_bytes_async(image_bytes)
-    query_np = np.array(query_embedding)
 
-    # Get all embeddings
-    image_embeddings = await get_all_embeddings()
-    if not image_embeddings:
-        return ImageSearchResponse(results=[], total=0)
+    # Search in Chroma
+    chroma_results = chroma_manager.search_by_vector(query_embedding, top_k)
+    
+    if not chroma_results["ids"] or not chroma_results["ids"][0]:
+        return ImageSearchResponse(results=[], total=chroma_manager.collection.count())
 
-    # Find similar images
-    similar_images = find_similar_images(query_np, image_embeddings, top_k)
+    image_ids = [int(id_) for id_ in chroma_results["ids"][0]]
+    similarities = [1.0 - float(dist) for dist in chroma_results["distances"][0]]
 
-    # Get thumbnail URLs
-    from ..database import AsyncSessionLocal
-    from sqlalchemy import select
-
+    # Get thumbnail URLs from SQLite
     async with AsyncSessionLocal() as session:
-        image_ids = [img_id for img_id, _ in similar_images]
-        if not image_ids:
-            return ImageSearchResponse(results=[], total=0)
-
+        from sqlalchemy import select
         result = await session.execute(
             select(Image).where(Image.id.in_(image_ids))
         )
         images = {img.id: img for img in result.scalars().all()}
 
     results = []
-    for img_id, similarity in similar_images:
+    for img_id, similarity in zip(image_ids, similarities):
         img = images.get(img_id)
         if img:
             results.append(SearchResult(
@@ -142,4 +119,7 @@ async def search_by_image(file: UploadFile = File(...), top_k: int = 1):
                 thumbnail_url=f"/api/thumbnails/{img.thumbnail_path}" if img.thumbnail_path else "",
             ))
 
-    return ImageSearchResponse(results=results, total=len(results))
+    return ImageSearchResponse(
+        results=results,
+        total=chroma_manager.collection.count()
+    )
