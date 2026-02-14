@@ -4,9 +4,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from .database import init_db
-from .api import directories, clusters, images, search
-from .constants import CORS_ORIGINS, HOST, PORT, RELOAD, DATA_DIR
+from .core.database import init_db
+from .api import directories, clusters, images, search, embeddings
+from .core.config import CORS_ORIGINS, HOST, PORT, RELOAD, DATA_DIR
 
 
 @asynccontextmanager
@@ -14,13 +14,17 @@ async def lifespan(app: FastAPI):
     """Lifespan context manager for startup/shutdown"""
     # Startup
     await init_db()
-    from .sync import sync_sqlite_to_chroma
+    from .services.sync_service import sync_sqlite_to_chroma
     await sync_sqlite_to_chroma()
+
+    # Start background directory sync
+    from .services.directory_sync import directory_sync_service
+    await directory_sync_service.start_background_sync()
 
     yield
 
     # Shutdown
-    pass
+    await directory_sync_service.stop_background_sync()
 
 
 app = FastAPI(
@@ -47,6 +51,7 @@ app.include_router(directories.router)
 app.include_router(clusters.router)
 app.include_router(images.router)
 app.include_router(search.router)
+app.include_router(embeddings.router)
 
 
 @app.get("/")
