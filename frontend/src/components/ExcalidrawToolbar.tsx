@@ -518,6 +518,13 @@ export default function ExcalidrawToolbar({
                         style={{ boxShadow: '0 0 0 1px rgba(0,0,0,0.08), 0 8px 32px rgba(0,0,0,0.12)' }}
                     >
 
+                        {/* Error Message */}
+                        {addDirError && (
+                            <div className="mb-4 p-2 bg-red-50 text-red-600 text-2xs rounded-lg border border-red-100">
+                                {addDirError}
+                            </div>
+                        )}
+
                         {/* Drag & Drop Zone */}
                         <div
                             className={`relative border-2 border-dashed rounded-xl p-8 text-center transition-all ${isDraggingFolder
@@ -612,8 +619,7 @@ export default function ExcalidrawToolbar({
                                 <span>Select Folder</span>
                                 <input
                                     type="file"
-                                    webkitdirectory
-                                    directory
+                                    {...({ webkitdirectory: "", directory: "" } as any)}
                                     multiple
                                     className="hidden"
                                     onChange={async (e) => {

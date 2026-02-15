@@ -30,7 +30,6 @@ export default function WebGLPage() {
     });
 
     const handleAddDirectory = async (path: string) => {
-        // ... same logic ...
         try {
             const result = await api.addDirectory(path);
             setSelectedDirectory(path);
@@ -48,6 +47,25 @@ export default function WebGLPage() {
             setTimeout(pollJob, 1000);
         } catch (error) {
             console.error('Failed to add directory:', error);
+        }
+    };
+
+    const handleUploadFiles = async (files: FileList) => {
+        try {
+            const result = await api.uploadFiles(files);
+            const pollJob = async () => {
+                const status = await api.getJobStatus(result.job_id);
+                if (status.status === 'completed') {
+                    refetchClusters();
+                } else if (status.status === 'error') {
+                    console.error('Upload job failed:', status.errors);
+                } else {
+                    setTimeout(pollJob, 1000);
+                }
+            };
+            setTimeout(pollJob, 1000);
+        } catch (error) {
+            console.error('Failed to upload files:', error);
         }
     };
 
@@ -69,11 +87,9 @@ export default function WebGLPage() {
 
     const handleRecenter = useCallback(() => {
         if (focusOnImageRef.current) {
-            // Passing -1 or null to signify recenter
             focusOnImageRef.current(-1);
         }
     }, []);
-
 
     const handleFocusImage = useCallback((imageId: number, x?: number, y?: number) => {
         if (focusOnImageRef.current) {
@@ -89,6 +105,7 @@ export default function WebGLPage() {
         <div className="w-full h-screen bg-gray-50 overflow-hidden relative">
             <ExcalidrawToolbar
                 onAddDirectory={handleAddDirectory}
+                onUploadFiles={handleUploadFiles}
                 onRefresh={() => refetchClusters()}
                 isLoadingClusters={isLoadingClusters}
                 totalImages={clustersData?.total_images}
@@ -116,7 +133,6 @@ export default function WebGLPage() {
                     searchResults={searchResults}
                     explosionEnabled={explosionEnabled}
                     registerFocus={registerFocusOnImage}
-                //   TODO: pass down interaction handlers
                 />
             )}
 

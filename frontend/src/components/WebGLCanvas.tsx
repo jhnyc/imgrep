@@ -13,7 +13,6 @@ interface WebGLCanvasProps {
 }
 
 export default function WebGLCanvas({
-    clusters, // Not used but kept for prop compatibility
     images,
     searchResults,
     explosionEnabled = false,
@@ -119,9 +118,9 @@ export default function WebGLCanvas({
                 if (targetX !== undefined && targetY !== undefined && viewportRef.current) {
                     viewportRef.current.plugins.remove('snap');
                     viewportRef.current.snap(targetX, targetY, {
-                        center: true,
                         removeOnInterrupt: true,
-                        animate: { time: 800, ease: 'easeInOutQuad' }
+                        time: 800,
+                        ease: 'easeInOutQuad'
                     });
 
                     if (viewportRef.current.scale.x < 0.5) {

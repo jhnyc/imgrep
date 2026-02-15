@@ -51,6 +51,25 @@ export default function KonvaPage() {
         }
     };
 
+    const handleUploadFiles = async (files: FileList) => {
+        try {
+            const result = await api.uploadFiles(files);
+            const pollJob = async () => {
+                const status = await api.getJobStatus(result.job_id);
+                if (status.status === 'completed') {
+                    refetchClusters();
+                } else if (status.status === 'error') {
+                    console.error('Upload job failed:', status.errors);
+                } else {
+                    setTimeout(pollJob, 1000);
+                }
+            };
+            setTimeout(pollJob, 1000);
+        } catch (error) {
+            console.error('Failed to upload files:', error);
+        }
+    };
+
     const handleSearch = (results: SearchResult[]) => {
         const resultIds = results.map(r => r.image_id);
         setSearchResults(resultIds);
@@ -91,6 +110,7 @@ export default function KonvaPage() {
         <div className="w-full h-screen excalidraw-bg overflow-hidden relative">
             <ExcalidrawToolbar
                 onAddDirectory={handleAddDirectory}
+                onUploadFiles={handleUploadFiles}
                 onRefresh={() => refetchClusters()}
                 isLoadingClusters={isLoadingClusters}
                 totalImages={clustersData?.total_images}
