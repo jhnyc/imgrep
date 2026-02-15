@@ -5,9 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.database import AsyncSessionLocal
-from app.models import Image, Embedding
-from app.embeddings import embed_images_batch_async
+from app.core.database import AsyncSessionLocal
+from app.models.sql import Image, Embedding
+from app.services.embedding import embed_images_batch_async
 
 
 @pytest.mark.asyncio
@@ -47,7 +47,7 @@ async def test_image_unique_constraint(test_db):
 @pytest.mark.asyncio
 async def test_get_image_by_hash_finds_existing(test_db):
     """Test get_image_by_hash returns existing image."""
-    from app.database import get_image_by_hash, AsyncSessionLocal
+    from app.core.database import get_image_by_hash, AsyncSessionLocal
 
     async with AsyncSessionLocal() as session:
         embedding = Embedding(vector="[0.1, 0.2]", model_name="test-model")
@@ -71,7 +71,7 @@ async def test_get_image_by_hash_finds_existing(test_db):
 @pytest.mark.asyncio
 async def test_get_image_by_hash_returns_none_for_new(test_db):
     """Test get_image_by_hash returns None for new image."""
-    from app.database import get_image_by_hash
+    from app.core.database import get_image_by_hash
 
     result = await get_image_by_hash("new_hash")
 
@@ -81,8 +81,8 @@ async def test_get_image_by_hash_returns_none_for_new(test_db):
 @pytest.mark.asyncio
 async def test_process_directory_skips_duplicates(test_db, tmp_path):
     """Test that directory processing skips already embedded images."""
-    from app.image_processor import compute_file_hash
-    from app.database import get_image_by_hash, AsyncSessionLocal
+    from app.services.image import compute_file_hash
+    from app.core.database import get_image_by_hash, AsyncSessionLocal
 
     # Create test images
     img1 = tmp_path / "image1.jpg"
@@ -125,8 +125,8 @@ async def test_process_directory_skips_duplicates(test_db, tmp_path):
 @pytest.mark.asyncio
 async def test_batch_embed_only_new_images(test_db, tmp_path):
     """Test that batch embedding is only called for new images."""
-    from app.image_processor import compute_file_hash
-    from app.database import get_image_by_hash, AsyncSessionLocal
+    from app.services.image import compute_file_hash
+    from app.core.database import get_image_by_hash, AsyncSessionLocal
 
     # Create test images
     img1 = tmp_path / "image1.jpg"
@@ -165,20 +165,22 @@ async def test_batch_embed_only_new_images(test_db, tmp_path):
     assert images_to_embed[0] == img2
 
     # Mock the embedding call and verify it's called once
-    with patch("app.embeddings._embed_single_batch", new_callable=AsyncMock) as mock_embed:
-        mock_embed.return_value = [[0.1, 0.2]]
+    with patch("app.services.embeddings.siglip.get_siglip_embedder") as mock_get_embedder:
+        mock_embedder = MagicMock()
+        mock_embedder.embed_images_batch.return_value = [[0.1, 0.2]]
+        mock_get_embedder.return_value = mock_embedder
 
         result = await embed_images_batch_async(images_to_embed, batch_size=2)
 
         assert len(result) == 1
-        mock_embed.assert_called_once()
+        mock_embedder.embed_images_batch.assert_called_once()
 
 
 @pytest.mark.asyncio
 async def test_all_duplicates_skipped(test_db, tmp_path):
     """Test when all images are duplicates."""
-    from app.image_processor import compute_file_hash
-    from app.database import get_image_by_hash, AsyncSessionLocal
+    from app.services.image import compute_file_hash
+    from app.core.database import get_image_by_hash, AsyncSessionLocal
 
     # Create test images
     img1 = tmp_path / "image1.jpg"
@@ -217,7 +219,7 @@ async def test_all_duplicates_skipped(test_db, tmp_path):
 @pytest.mark.asyncio
 async def test_different_content_different_hash(tmp_path):
     """Test that different images produce different hashes."""
-    from app.image_processor import compute_file_hash
+    from app.services.image import compute_file_hash
 
     img1 = tmp_path / "image1.jpg"
     img2 = tmp_path / "image2.jpg"
@@ -234,7 +236,7 @@ async def test_different_content_different_hash(tmp_path):
 @pytest.mark.asyncio
 async def test_same_content_same_hash(tmp_path):
     """Test that identical content produces same hash."""
-    from app.image_processor import compute_file_hash
+    from app.services.image import compute_file_hash
 
     img1 = tmp_path / "image1.jpg"
     img2 = tmp_path / "image2.jpg"

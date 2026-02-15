@@ -2,7 +2,7 @@
 import numpy as np
 import pytest
 
-from app.clustering import (
+from app.services.clustering import (
     ClusteringStrategy,
     HDBSCANStrategy,
     KMeansStrategy,

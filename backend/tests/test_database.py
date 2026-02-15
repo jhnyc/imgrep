@@ -2,8 +2,8 @@
 import json
 import pytest
 
-from app.models import Image, Embedding, ClusteringRun, ClusterAssignment, ClusterMetadata
-from app.database import (
+from app.models.sql import Image, Embedding, ClusteringRun, ClusterAssignment, ClusterMetadata
+from app.core.database import (
     get_image_by_hash,
     get_all_image_ids,
     get_all_embeddings,
@@ -24,7 +24,7 @@ async def test_get_image_by_hash_success(test_db):
     """Test getting image by hash."""
     from sqlalchemy.ext.asyncio import async_sessionmaker
 
-    from app.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal
 
     async with AsyncSessionLocal() as session:
         embedding = Embedding(vector="[0.1, 0.2]", model_name="test-model")
@@ -56,7 +56,7 @@ async def test_get_all_image_ids_empty(test_db):
 @pytest.mark.asyncio
 async def test_get_all_image_ids(test_db):
     """Test getting all image IDs."""
-    from app.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal
 
     async with AsyncSessionLocal() as session:
         for i in range(3):
@@ -76,7 +76,7 @@ async def test_get_all_image_ids(test_db):
 @pytest.mark.asyncio
 async def test_get_all_embeddings(test_db):
     """Test getting all embeddings with image IDs."""
-    from app.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal
 
     async with AsyncSessionLocal() as session:
         # Create embeddings and images
@@ -108,7 +108,7 @@ async def test_get_all_embeddings(test_db):
 @pytest.mark.asyncio
 async def test_get_all_embeddings_excludes_null(test_db):
     """Test that images without embeddings are excluded."""
-    from app.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal
 
     async with AsyncSessionLocal() as session:
         # Image with embedding
@@ -148,7 +148,7 @@ async def test_get_current_clustering_run_none(test_db):
 @pytest.mark.asyncio
 async def test_get_current_clustering_run_found(test_db):
     """Test getting current clustering run."""
-    from app.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal
 
     async with AsyncSessionLocal() as session:
         run = ClusteringRun(
@@ -170,7 +170,7 @@ async def test_get_current_clustering_run_found(test_db):
 @pytest.mark.asyncio
 async def test_get_current_clustering_run_wrong_strategy(test_db):
     """Test that current run is strategy-specific."""
-    from app.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal
 
     async with AsyncSessionLocal() as session:
         run = ClusteringRun(
@@ -188,7 +188,7 @@ async def test_get_current_clustering_run_wrong_strategy(test_db):
 @pytest.mark.asyncio
 async def test_get_current_clustering_run_not_current(test_db):
     """Test that non-current runs are not returned."""
-    from app.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal
 
     async with AsyncSessionLocal() as session:
         run = ClusteringRun(
@@ -206,7 +206,7 @@ async def test_get_current_clustering_run_not_current(test_db):
 @pytest.mark.asyncio
 async def test_set_current_clustering_run(test_db):
     """Test setting a clustering run as current."""
-    from app.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal
     from sqlalchemy import select
 
     async with AsyncSessionLocal() as session:
@@ -245,7 +245,7 @@ async def test_set_current_clustering_run(test_db):
 @pytest.mark.asyncio
 async def test_clustering_run_relationships(test_db):
     """Test ClusteringRun relationships with assignments and metadata."""
-    from app.database import AsyncSessionLocal
+    from app.core.database import AsyncSessionLocal
     from sqlalchemy import select
     from sqlalchemy.orm import selectinload
 

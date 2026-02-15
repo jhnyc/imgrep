@@ -1,6 +1,6 @@
 import asyncio
 import base64
-from typing import List, Tuple
+from typing import List
 from pathlib import Path
 
 import httpx
@@ -45,7 +45,8 @@ async def _embed_single_batch(client: httpx.AsyncClient, image_paths: List[Path]
     response.raise_for_status()
     data = response.json()
 
-    # Results are returned in order
+    # Results may not be in order, so we need to match by index
+    # The API returns results in order, so we can just return them
     return [item["embedding"] for item in data["data"]]
 
 
@@ -80,6 +81,7 @@ async def embed_image_bytes_async(image_bytes: bytes) -> List[float]:
         return response.json()["data"][0]["embedding"]
 
 
+# For batch processing of images from directory (with progress tracking)
 class EmbeddingProgress:
     """Progress tracker for embedding operations"""
     def __init__(self, total: int):
@@ -102,7 +104,7 @@ class EmbeddingProgress:
             "total": self.total,
             "processed": self.processed,
             "progress": self.progress,
-            "errors": self.errors[-10:],
+            "errors": self.errors[-10:],  # Last 10 errors
         }
 
 
@@ -110,7 +112,7 @@ async def embed_images_with_progress(
     image_paths: List[Path],
     batch_size: int = DEFAULT_BATCH_SIZE,
     progress_callback = None
-) -> Tuple[List[List[float]], List[str]]:
+) -> tuple[List[List[float]], List[str]]:
     """
     Embed images with progress tracking.
     Returns (embeddings, error_messages).
@@ -140,6 +142,10 @@ async def embed_images_with_progress(
 
             if progress_callback:
                 await progress_callback(progress.to_dict())
+
+            # Add delay between batches to avoid rate limiting
+            if i + batch_size < len(image_paths):
+                await asyncio.sleep(0.5)
 
     # Filter out None embeddings
     valid_embeddings = [e for e in embeddings if e is not None]

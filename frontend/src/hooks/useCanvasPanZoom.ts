@@ -19,16 +19,29 @@ export function useCanvasPanZoom(initialScale = 1) {
 
   const [isLocked, setIsLocked] = useState(false);
   const [isAnimating, setIsAnimating] = useState(false);
+  const [isDraggingState, setIsDraggingState] = useState(false);
 
   const isDragging = useRef(false);
   const dragStart = useRef({ x: 0, y: 0 });
   const viewportStart = useRef({ x: 0, y: 0 });
   const animationRef = useRef<number | null>(null);
+  
+  // Inertia tracking
+  const velocity = useRef({ x: 0, y: 0 });
+  const lastMousePos = useRef({ x: 0, y: 0 });
+  const lastTimestamp = useRef(0);
+  const inertiaFrameRef = useRef<number | null>(null);
 
   const handleWheel = useCallback(
     (e: React.WheelEvent) => {
       if (isLocked) return;
       e.preventDefault();
+      
+      // Stop inertia on wheel
+      if (inertiaFrameRef.current) {
+        cancelAnimationFrame(inertiaFrameRef.current);
+        inertiaFrameRef.current = null;
+      }
 
       const bounds = (e.target as HTMLElement).getBoundingClientRect();
       const cursorX = e.clientX - bounds.left;
@@ -51,9 +64,26 @@ export function useCanvasPanZoom(initialScale = 1) {
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
     if (isLocked) return;
     if (e.button === 1 || e.button === 0) {
+      // Stop any existing inertia or animation
+      if (inertiaFrameRef.current) {
+          cancelAnimationFrame(inertiaFrameRef.current);
+          inertiaFrameRef.current = null;
+      }
+      if (animationRef.current) {
+          cancelAnimationFrame(animationRef.current);
+          animationRef.current = null;
+      }
+
       isDragging.current = true;
+      setIsDraggingState(true);
       dragStart.current = { x: e.clientX, y: e.clientY };
       viewportStart.current = { x: viewport.x, y: viewport.y };
+      
+      // Initialize velocity tracking
+      lastMousePos.current = { x: e.clientX, y: e.clientY };
+      lastTimestamp.current = performance.now();
+      velocity.current = { x: 0, y: 0 };
+
       (e.target as HTMLElement).style.cursor = 'grabbing';
     }
   }, [viewport, isLocked]);
@@ -61,6 +91,10 @@ export function useCanvasPanZoom(initialScale = 1) {
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (!isDragging.current || isLocked) return;
 
+    const now = performance.now();
+    const dt = now - lastTimestamp.current;
+    
+    // Calculate new viewport position
     const dx = e.clientX - dragStart.current.x;
     const dy = e.clientY - dragStart.current.y;
 
@@ -69,12 +103,60 @@ export function useCanvasPanZoom(initialScale = 1) {
       x: viewportStart.current.x + dx,
       y: viewportStart.current.y + dy,
     });
+
+    // Track velocity (pixels per millisecond)
+    if (dt > 0) {
+        const vx = (e.clientX - lastMousePos.current.x) / dt;
+        const vy = (e.clientY - lastMousePos.current.y) / dt;
+        // Simple smoothing
+        velocity.current = { 
+            x: vx * 0.2 + velocity.current.x * 0.8, 
+            y: vy * 0.2 + velocity.current.y * 0.8 
+        };
+    }
+    
+    lastMousePos.current = { x: e.clientX, y: e.clientY };
+    lastTimestamp.current = now;
+
   }, [viewport, isLocked]);
 
   const handleMouseUp = useCallback(() => {
     if (isDragging.current) {
       isDragging.current = false;
+      setIsDraggingState(false);
       (document.activeElement as HTMLElement)?.blur();
+
+      // Apply inertia if velocity is sufficient
+      const v = velocity.current;
+      const speed = Math.sqrt(v.x * v.x + v.y * v.y);
+      
+      if (speed > 0.1) {
+          const friction = 0.95;
+          const stopThreshold = 0.01;
+          
+          let currentVx = v.x * 12; // Boost velocity slightly for better feel
+          let currentVy = v.y * 12;
+
+          const step = () => {
+              if (Math.abs(currentVx) < stopThreshold && Math.abs(currentVy) < stopThreshold) {
+                  inertiaFrameRef.current = null;
+                  return;
+              }
+
+              setViewport(prev => ({
+                  ...prev,
+                  x: prev.x + currentVx,
+                  y: prev.y + currentVy,
+              }));
+
+              currentVx *= friction;
+              currentVy *= friction;
+              
+              inertiaFrameRef.current = requestAnimationFrame(step);
+          };
+          
+          inertiaFrameRef.current = requestAnimationFrame(step);
+      }
     }
   }, []);
 
@@ -83,9 +165,8 @@ export function useCanvasPanZoom(initialScale = 1) {
   }, []);
 
   const animateTo = useCallback((targetX: number, targetY: number, targetScale: number, duration = 400) => {
-    if (animationRef.current) {
-      cancelAnimationFrame(animationRef.current);
-    }
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
+    if (inertiaFrameRef.current) cancelAnimationFrame(inertiaFrameRef.current);
 
     setIsAnimating(true);
     const startTime = performance.now();
@@ -161,6 +242,7 @@ export function useCanvasPanZoom(initialScale = 1) {
     isLocked,
     toggleLock,
     isAnimating,
+    isDragging: isDraggingState,
     centerOnPoints,
     animateTo,
   };

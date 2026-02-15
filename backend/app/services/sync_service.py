@@ -1,6 +1,6 @@
 import json
-from .database import AsyncSessionLocal
-from .models import Image, Embedding
+from ..core.database import AsyncSessionLocal
+from ..models.sql import Image, Embedding
 from .chroma import chroma_manager
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload

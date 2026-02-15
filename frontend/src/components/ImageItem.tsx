@@ -1,34 +1,55 @@
-import { useMemo, useRef, useState } from 'react';
+import Konva from 'konva';
+import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { Group, Image as KonvaImage, Rect } from 'react-konva';
 import type { ImagePosition } from '../api/client';
+import { useImage } from '../hooks/useImage';
 
 interface ImageItemProps {
   image: ImagePosition;
   x: number;
   y: number;
   isDimmed: boolean;
+  isLowDetail?: boolean;
 }
 
 const MAX_SIZE = 100;
 const FRAME_PADDING = 6;
 const CORNER_RADIUS = 10;
 
-export default function ImageItem({ image, x, y, isDimmed }: ImageItemProps) {
-  const [imgElement, setImgElement] = useState<HTMLImageElement | null>(null);
+function ImageItem({ image, x, y, isDimmed, isLowDetail = false }: ImageItemProps) {
+  // If low detail, render a simple placeholder without loading the image
+  if (isLowDetail) {
+    return (
+      <Rect
+        x={x - 20}
+        y={y - 20}
+        width={40}
+        height={40}
+        fill={isDimmed ? "#e5e7eb" : "#9ca3af"}
+        cornerRadius={4}
+        opacity={isDimmed ? 0.35 : 0.8}
+        rotation={((image.id * 137) % 5) - 2.5}
+        perfectDrawEnabled={false}
+        listening={false} // Disable interaction when zoomed out
+      />
+    );
+  }
+
+  const [imgElement, status] = useImage(
+    image.thumbnail_url ? `http://localhost:8001${image.thumbnail_url}` : null,
+    'anonymous'
+  );
+
   const [imgSize, setImgSize] = useState({ width: MAX_SIZE, height: MAX_SIZE });
-  const [error, setError] = useState(false);
-  const imageRef = useRef<HTMLImageElement>(null);
+  const groupRef = useRef<Konva.Group>(null);
 
-  const rotation = useMemo(() => (Math.random() - 0.5) * 4, []);
+  // Deterministic rotation based on ID to avoid re-render wobbles
+  const rotation = useMemo(() => ((image.id * 137) % 5) - 2.5, [image.id]);
 
-  const [loaded, setLoaded] = useState(false);
-
-  if (!loaded && image.thumbnail_url) {
-    const img = new window.Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
+  useEffect(() => {
+    if (status === 'loaded' && imgElement) {
       // Calculate size preserving aspect ratio
-      const aspectRatio = img.naturalWidth / img.naturalHeight;
+      const aspectRatio = imgElement.naturalWidth / imgElement.naturalHeight;
       let width, height;
 
       if (aspectRatio > 1) {
@@ -42,17 +63,45 @@ export default function ImageItem({ image, x, y, isDimmed }: ImageItemProps) {
       }
 
       setImgSize({ width, height });
-      setImgElement(img);
-      setError(false);
-      setLoaded(true);
-    };
-    img.onerror = () => {
-      setError(true);
-      setLoaded(true);
-    };
-    img.src = `http://localhost:8001${image.thumbnail_url}`;
-    imageRef.current = img;
-  }
+    }
+  }, [status, imgElement]);
+
+  const frameWidth = imgSize.width + FRAME_PADDING * 2;
+  const frameHeight = imgSize.height + FRAME_PADDING * 2;
+  const error = status === 'failed';
+
+  // Caching logic
+  useEffect(() => {
+    const node = groupRef.current;
+    if (!node) return;
+
+    if (status === 'loaded' || status === 'failed' || (!image.thumbnail_url && status !== 'loading')) {
+      // Small timeout to ensure rendering is done before caching
+      // (sometimes Konva needs a tick update for images)
+      const timer = setTimeout(() => {
+        try {
+          if (node) {
+            // Cache with pixel ratio 2 for better quality on zoom, but kept reasonable
+            node.cache({
+              pixelRatio: 1.5,
+            });
+          }
+        } catch (e) {
+          console.warn("Failed to cache node", e);
+        }
+      }, 10);
+
+      return () => clearTimeout(timer);
+    }
+  }, [status, imgSize, isDimmed]);
+  // We include isDimmed because it changes opacity. 
+  // However, Opacity on Group is applied POST cache? 
+  // Konva docs: "When you cache a node, it is drawn into an offline canvas... 
+  // The cached image is then drawn onto the main canvas."
+  // Group properties (x, y, rotation, opacity, scale) are applied to the cached bitmap.
+  // Children properties are baked in.
+  // So if we change Group opacity, we DO NOT need to re-cache!
+  // But wait, the Group content is what is cached.
 
   const handleClick = () => {
     window.dispatchEvent(
@@ -62,11 +111,9 @@ export default function ImageItem({ image, x, y, isDimmed }: ImageItemProps) {
     );
   };
 
-  const frameWidth = imgSize.width + FRAME_PADDING * 2;
-  const frameHeight = imgSize.height + FRAME_PADDING * 2;
-
   return (
     <Group
+      ref={groupRef}
       x={x}
       y={y}
       rotation={rotation}
@@ -87,14 +134,16 @@ export default function ImageItem({ image, x, y, isDimmed }: ImageItemProps) {
         height={frameHeight}
         fill="white"
         cornerRadius={CORNER_RADIUS}
-        shadowColor="rgba(0, 0, 0, 0.1)"
-        shadowBlur={12}
+        shadowColor="rgba(0, 0, 0, 0.15)"
+        shadowBlur={15}
         shadowOffsetX={0}
-        shadowOffsetY={4}
+        shadowOffsetY={5}
+        shadowEnabled={true}
+        perfectDrawEnabled={false}
       />
 
       {/* Image or placeholder */}
-      {imgElement ? (
+      {imgElement && status === 'loaded' ? (
         <KonvaImage
           image={imgElement}
           x={-imgSize.width / 2}
@@ -102,6 +151,7 @@ export default function ImageItem({ image, x, y, isDimmed }: ImageItemProps) {
           width={imgSize.width}
           height={imgSize.height}
           cornerRadius={CORNER_RADIUS - 2}
+          perfectDrawEnabled={false}
         />
       ) : (
         <Rect
@@ -116,3 +166,5 @@ export default function ImageItem({ image, x, y, isDimmed }: ImageItemProps) {
     </Group>
   );
 }
+
+export default memo(ImageItem);

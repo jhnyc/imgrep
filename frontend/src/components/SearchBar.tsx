@@ -1,14 +1,25 @@
 import { Camera, Search, SendHorizontal, X } from 'lucide-react';
 import { useRef, useState } from 'react';
+import type { SearchResult } from '../api/client';
 import { api } from '../api/client';
 
 interface SearchBarProps {
-    onSearch: (resultIds: number[]) => void;
+    onSearch: (results: SearchResult[]) => void;
     onClearSearch: () => void;
     hasActiveSearch: boolean;
+    strategy: string;
+    projectionStrategy: string;
+    overlapStrategy: string;
 }
 
-export default function SearchBar({ onSearch, onClearSearch, hasActiveSearch }: SearchBarProps) {
+export default function SearchBar({
+    onSearch,
+    onClearSearch,
+    hasActiveSearch,
+    strategy,
+    projectionStrategy,
+    overlapStrategy
+}: SearchBarProps) {
     const [searchQuery, setSearchQuery] = useState('');
     const [isSearching, setIsSearching] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -18,9 +29,14 @@ export default function SearchBar({ onSearch, onClearSearch, hasActiveSearch }: 
 
         setIsSearching(true);
         try {
-            const results = await api.searchText(searchQuery, 1);
-            const resultIds = results.results.map((r) => r.image_id);
-            onSearch(resultIds);
+            const results = await api.searchText(
+                searchQuery,
+                1,
+                strategy,
+                projectionStrategy,
+                overlapStrategy
+            );
+            onSearch(results.results);
         } catch (error) {
             console.error('Search failed:', error);
         } finally {
@@ -33,9 +49,14 @@ export default function SearchBar({ onSearch, onClearSearch, hasActiveSearch }: 
 
         setIsSearching(true);
         try {
-            const results = await api.searchImage(file, 1);
-            const resultIds = results.results.map((r) => r.image_id);
-            onSearch(resultIds);
+            const results = await api.searchImage(
+                file,
+                1,
+                strategy,
+                projectionStrategy,
+                overlapStrategy
+            );
+            onSearch(results.results);
         } catch (error) {
             console.error('Image search failed:', error);
         } finally {

@@ -1,4 +1,6 @@
-import { useMemo } from 'react';
+
+import Konva from 'konva';
+import { memo, useEffect, useMemo, useRef } from 'react';
 import { Circle, Group, Text } from 'react-konva';
 import type { ClusterNode as ClusterNodeType, ImagePosition } from '../api/client';
 import { calculateSpiralPosition } from '../hooks/useClusterAnimation';
@@ -11,6 +13,7 @@ interface ClusterNodeProps {
   onHover: () => void;
   onUnhover: () => void;
   isDimmed: boolean;
+  isLowDetail?: boolean;
 }
 
 // Modern soft pastel colors
@@ -23,14 +26,16 @@ function getClusterColor(id: number): string {
   return CLUSTER_COLORS[id % CLUSTER_COLORS.length];
 }
 
-export default function ClusterNode({
+function ClusterNode({
   cluster,
   images,
   isExpanded,
   onHover,
   onUnhover,
   isDimmed,
+  isLowDetail = false,
 }: ClusterNodeProps) {
+  const groupRef = useRef<Konva.Group>(null);
   const clusterRadius = Math.max(32, Math.min(100, Math.sqrt(cluster.image_count) * 16));
   const clusterColor = getClusterColor(cluster.id);
 
@@ -43,8 +48,25 @@ export default function ClusterNode({
     return `rgb(${r}, ${g}, ${b})`;
   }, [clusterColor]);
 
+  // Caching logic
+  useEffect(() => {
+    const node = groupRef.current;
+
+    // We only cache if NOT expanded.
+    // ... comments ...
+
+    if (node && !isExpanded) {
+      node.cache({
+        pixelRatio: 1.5,
+      });
+    } else if (node && isExpanded) {
+      node.clearCache();
+    }
+  }, [isExpanded, clusterRadius, clusterColor, strokeColor, isDimmed]);
+
   return (
     <Group
+      ref={groupRef}
       x={cluster.x}
       y={cluster.y}
       onMouseEnter={() => {
@@ -63,10 +85,12 @@ export default function ClusterNode({
         stroke={strokeColor}
         strokeWidth={1.5}
         opacity={isDimmed ? 0.25 : 0.92}
-        shadowColor="rgba(0, 0, 0, 0.1)"
+        shadowColor="rgba(0, 0, 0, 0.15)"
         shadowBlur={16}
         shadowOffsetX={0}
         shadowOffsetY={6}
+        shadowEnabled={true}
+        perfectDrawEnabled={false}
       />
 
       {/* Image count */}
@@ -96,9 +120,12 @@ export default function ClusterNode({
               x={pos.x}
               y={pos.y}
               isDimmed={isDimmed}
+              isLowDetail={isLowDetail}
             />
           );
         })}
     </Group>
   );
 }
+
+export default memo(ClusterNode);

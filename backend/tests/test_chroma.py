@@ -2,8 +2,8 @@ import pytest
 import numpy as np
 import json
 from pathlib import Path
-from app.chroma import ChromaManager
-from app.constants import CHROMA_DATA_PATH
+from app.services.chroma import ChromaManager
+from app.core.config import CHROMA_DATA_PATH
 import shutil
 import os
 
@@ -82,8 +82,8 @@ def test_chroma_delete(chroma_test_manager):
 async def test_search_integration(client, test_db, chroma_test_manager, monkeypatch):
     """Test search API integration with Chroma and SQLite"""
     from app.api.search import chroma_manager
-    from app.database import AsyncSessionLocal
-    from app.models import Image, Embedding
+    from app.core.database import AsyncSessionLocal
+    from app.models.sql import Image, Embedding
     
     # Mock chroma_manager in the search module
     monkeypatch.setattr("app.api.search.chroma_manager", chroma_test_manager)

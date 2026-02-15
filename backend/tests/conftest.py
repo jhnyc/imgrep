@@ -12,8 +12,8 @@ os.environ["DB_NAME"] = "test_app.db"
 
 # Import app components after setting env var
 from app.main import app
-from app.database import init_db, engine
-from app.constants import DB_PATH
+from app.core.database import init_db, engine
+from app.core.config import DB_PATH
 
 # Suppress DeprecationWarnings from external libraries during tests
 warnings.filterwarnings("ignore", category=DeprecationWarning)

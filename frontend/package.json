@@ -13,9 +13,12 @@
     "@tanstack/react-query": "^5.90.20",
     "konva": "^10.2.0",
     "lucide-react": "^0.563.0",
+    "pixi-viewport": "^6.0.3",
+    "pixi.js": "^8.16.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-konva": "^19.2.2",
+    "react-router-dom": "^7.13.0",
     "use-sound": "^5.0.0"
   },
   "devDependencies": {

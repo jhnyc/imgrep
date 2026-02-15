@@ -1,81 +1,32 @@
 """Tests for embedding service."""
 import base64
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from httpx import HTTPStatusError, Response
 
-from app.embeddings import (
+from app.services.embedding import (
     EmbeddingProgress,
-    embed_text_async,
-    embed_image_bytes_async,
-    embed_images_batch_async,
     embed_images_with_progress,
+    get_embedding_info,
 )
 
 
 @pytest.mark.asyncio
-async def test_embed_text_async_success():
-    """Test successful text embedding."""
-    mock_response = {
-        "data": [{"embedding": [0.1, 0.2, 0.3, 0.4]}]
-    }
+async def test_embed_text_async():
+    """Test text embedding using SigLIP"""
+    # This test will actually use the SigLIP model
+    # For unit testing, we mock the embedder
+    with patch("app.services.embeddings.siglip.get_siglip_embedder") as mock_get_embedder:
+        mock_embedder = MagicMock()
+        mock_embedder.embed_text.return_value = [0.1, 0.2, 0.3, 0.4]
+        mock_get_embedder.return_value = mock_embedder
 
-    with patch("app.embeddings.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_response_obj = MagicMock()
-        mock_response_obj.json.return_value = mock_response
-        mock_response_obj.raise_for_status = MagicMock()
-        mock_client.post.return_value = mock_response_obj
-        mock_client_class.return_value.__aenter__.return_value = mock_client
-
+        from app.services.embedding import embed_text_async
         result = await embed_text_async("test query")
 
         assert result == [0.1, 0.2, 0.3, 0.4]
-        mock_client.post.assert_called_once()
-
-
-@pytest.mark.asyncio
-async def test_embed_text_async_http_error():
-    """Test text embedding with HTTP error."""
-    with patch("app.embeddings.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_response = MagicMock(spec=Response)
-        mock_response.status_code = 401
-        mock_response.raise_for_status.side_effect = HTTPStatusError(
-            "401 Unauthorized", request=MagicMock(), response=mock_response
-        )
-        mock_client.post.return_value = mock_response
-        mock_client.__aenter__.return_value = mock_client
-        mock_client_class.return_value = mock_client
-
-        with pytest.raises(HTTPStatusError):
-            await embed_text_async("test query")
-
-
-@pytest.mark.asyncio
-async def test_embed_image_bytes_async():
-    """Test embedding image bytes."""
-    mock_response = {
-        "data": [{"embedding": [0.5, 0.6, 0.7, 0.8]}]
-    }
-
-    with patch("app.embeddings.httpx.AsyncClient") as mock_client_class:
-        mock_client = AsyncMock()
-        mock_response_obj = MagicMock()
-        mock_response_obj.json.return_value = mock_response
-        mock_response_obj.raise_for_status = MagicMock()
-        mock_client.post.return_value = mock_response_obj
-        mock_client.__aenter__.return_value = mock_client
-        mock_client_class.return_value = mock_client
-
-        result = await embed_image_bytes_async(b"fake image bytes")
-
-        assert result == [0.5, 0.6, 0.7, 0.8]
-
-        # Verify the image was base64 encoded
-        call_args = mock_client.post.call_args
-        assert "image" in call_args[1]["json"]["input"][0]
+        mock_embedder.embed_text.assert_called_once_with("test query")
 
 
 def test_embedding_progress():
@@ -125,8 +76,10 @@ async def test_embed_images_with_progress_success(tmp_path):
     async def progress_callback(data):
         progress_updates.append(data)
 
-    with patch("app.embeddings._embed_single_batch", new_callable=AsyncMock) as mock_embed:
-        mock_embed.return_value = mock_embeddings
+    with patch("app.services.embeddings.siglip.get_siglip_embedder") as mock_get_embedder:
+        mock_embedder = MagicMock()
+        mock_embedder.embed_images_batch.return_value = mock_embeddings
+        mock_get_embedder.return_value = mock_embedder
 
         result, errors = await embed_images_with_progress(
             [img1, img2],
@@ -156,14 +109,18 @@ async def test_embed_images_with_progress_batch_error(tmp_path):
 
     call_count = 0
 
-    async def mock_embed_batch(client, paths):
+    def mock_embed_batch(images):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
             return [[0.1, 0.2]]
-        raise Exception("API error")
+        raise Exception("Model error")
 
-    with patch("app.embeddings._embed_single_batch", side_effect=mock_embed_batch):
+    with patch("app.services.embeddings.siglip.get_siglip_embedder") as mock_get_embedder:
+        mock_embedder = MagicMock()
+        mock_embedder.embed_images_batch.side_effect = mock_embed_batch
+        mock_get_embedder.return_value = mock_embedder
+
         result, errors = await embed_images_with_progress(
             [img1, img2, img3, img4],
             batch_size=2,
@@ -172,24 +129,21 @@ async def test_embed_images_with_progress_batch_error(tmp_path):
 
         assert len(result) == 1
         assert len(errors) == 1
-        assert "API error" in errors[0]
+        assert "Model error" in errors[0]
 
 
 @pytest.mark.asyncio
-async def test_embed_images_batch_async(tmp_path):
-    """Test basic batch image embedding."""
-    img1 = tmp_path / "img1.jpg"
-    img2 = tmp_path / "img2.jpg"
-    img1.write_bytes(b"fake1")
-    img2.write_bytes(b"fake2")
+async def test_get_embedding_info():
+    """Test getting embedding backend info"""
+    with patch("app.services.embeddings.siglip.get_siglip_embedder") as mock_get_embedder:
+        mock_embedder = MagicMock()
+        mock_embedder.model_name = "google/siglip-base-patch16-512"
+        mock_embedder.embedding_dim = 768
+        mock_get_embedder.return_value = mock_embedder
 
-    mock_embeddings = [[0.1, 0.2], [0.3, 0.4]]
+        info = await get_embedding_info()
 
-    with patch("app.embeddings._embed_single_batch", new_callable=AsyncMock) as mock_embed:
-        mock_embed.return_value = mock_embeddings
-
-        result = await embed_images_batch_async([img1, img2], batch_size=2)
-
-        assert len(result) == 2
-        assert result == mock_embeddings
-        mock_embed.assert_called_once()
+        assert info["backend"] == "siglip"
+        assert info["model"] == "google/siglip-base-patch16-512"
+        assert info["embedding_dim"] == 768
+        assert info["type"] == "local"

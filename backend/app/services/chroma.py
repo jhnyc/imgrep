@@ -1,10 +1,14 @@
+"""
+Chroma service - handles vector database operations using ChromaDB.
+"""
 import chromadb
 from chromadb.config import Settings
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 import numpy as np
 
-from .constants import CHROMA_DATA_PATH, CHROMA_COLLECTION_NAME
+from ..core.config import CHROMA_DATA_PATH, CHROMA_COLLECTION_NAME
+
 
 class ChromaManager:
     def __init__(self):
@@ -19,9 +23,9 @@ class ChromaManager:
         )
 
     def add_embeddings(
-        self, 
-        ids: List[str], 
-        embeddings: List[List[float]], 
+        self,
+        ids: List[str],
+        embeddings: List[List[float]],
         metadatas: Optional[List[Dict[str, Any]]] = None
     ):
         """Add embeddings to the collection"""
@@ -32,8 +36,8 @@ class ChromaManager:
         )
 
     def search_by_vector(
-        self, 
-        query_embedding: List[float], 
+        self,
+        query_embedding: List[float],
         top_k: int = 20
     ) -> Dict[str, Any]:
         """Search by embedding vector"""
@@ -52,9 +56,10 @@ class ChromaManager:
         """Get all embeddings from the collection"""
         results = self.collection.get(include=["embeddings"])
         return {
-            id_: emb 
+            id_: emb
             for id_, emb in zip(results["ids"], results["embeddings"])
         }
+
 
 # Global instance
 chroma_manager = ChromaManager()

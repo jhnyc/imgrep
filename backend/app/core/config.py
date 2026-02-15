@@ -7,28 +7,20 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Project paths
-BASE_DIR = Path(__file__).parent.parent
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = BASE_DIR / "data"
 DB_DIR = DATA_DIR
 THUMBNAILS_DIR = DATA_DIR / "thumbnails"
 UPLOADS_DIR = DATA_DIR / "uploads"
 
-# API Configuration
-JINA_API_KEY = os.getenv("JINA_API_KEY")
-if not JINA_API_KEY:
-    raise Exception("JINA API key not set. Set JINA_API_KEY environment variable for production.")
-
-JINA_API_URL = os.getenv("JINA_API_URL", "https://api.jina.ai/v1/embeddings")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "jina-clip-v2")
+# Embedding Configuration (local SigLIP model)
+SIGLIP_MODEL_NAME = os.getenv("SIGLIP_MODEL_NAME", "google/siglip-base-patch16-512")
+SIGLIP_DEVICE = os.getenv("SIGLIP_DEVICE", "auto")  # Options: "auto", "cuda", "cpu", "mps"
 
 # Database Configuration
 DB_NAME = os.getenv("DB_NAME", "app.db")
 DB_PATH = DB_DIR / DB_NAME
-# Use libsql dialect for native vector search support
-DATABASE_URL = f"sqlite+libsql:///{DB_PATH}"
-
-# Embedding Configuration  
-EMBEDDING_DIM = int(os.getenv("EMBEDDING_DIM", "1024"))  # jina-clip-v2 outputs 1024 dims
+DATABASE_URL = f"sqlite+aiosqlite:///{DB_PATH}"
 
 # Server Configuration
 HOST = os.getenv("HOST", "127.0.0.1")
@@ -43,13 +35,8 @@ THUMBNAIL_SIZE = int(os.getenv("THUMBNAIL_SIZE", "256"))
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tiff"}
 
 # Embedding Configuration
-DEFAULT_BATCH_SIZE = int(os.getenv("DEFAULT_BATCH_SIZE", "2"))
+DEFAULT_BATCH_SIZE = int(os.getenv("DEFAULT_BATCH_SIZE", "12"))
 EMBEDDING_TIMEOUT = float(os.getenv("EMBEDDING_TIMEOUT", "60.0"))
-
-# Retry Queue Configuration
-MAX_RETRY_COUNT = int(os.getenv("MAX_RETRY_COUNT", "3"))
-RETRY_BATCH_SIZE = int(os.getenv("RETRY_BATCH_SIZE", "1"))
-RETRY_BASE_DELAY_SECONDS = int(os.getenv("RETRY_BASE_DELAY_SECONDS", "60"))  # Base delay for exponential backoff
 
 # Clustering Configuration
 CANVAS_SIZE = float(os.getenv("CANVAS_SIZE", "2000"))
@@ -64,3 +51,7 @@ ALLOWED_DIRECTORY_PREFIXES = os.getenv("ALLOWED_DIRECTORY_PREFIXES", "").split("
 THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 DB_DIR.mkdir(parents=True, exist_ok=True)
+
+# Chroma configuration
+CHROMA_DATA_PATH = DATA_DIR / "chroma"
+CHROMA_COLLECTION_NAME = "images"

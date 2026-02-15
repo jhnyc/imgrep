@@ -1,142 +1,43 @@
-import { useQuery } from '@tanstack/react-query';
-import { useCallback, useRef, useState } from 'react';
-import { api, queryKeys } from './api/client';
-import ExcalidrawToolbar from './components/ExcalidrawToolbar';
-import ImageViewer from './components/ImageViewer';
-import InfiniteCanvas from './components/InfiniteCanvas';
-import SearchBar from './components/SearchBar';
+import { BrowserRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
+import KonvaPage from './components/KonvaPage';
+import WebGLPage from './components/WebGLPage';
 
-function App() {
-  const [, setSelectedDirectory] = useState<string | null>(null);
-  const [searchResults, setSearchResults] = useState<number[] | null>(null);
-  const [isLocked, setIsLocked] = useState(false);
-  const recenterRef = useRef<(() => void) | null>(null);
-  const focusOnImageRef = useRef<((imageId: number) => void) | null>(null);
-
-  const {
-    data: clustersData,
-    isLoading: isLoadingClusters,
-    refetch: refetchClusters,
-  } = useQuery({
-    queryKey: queryKeys.clusters('hdbscan', false),
-    queryFn: () => api.getClusters('hdbscan', false),
-    enabled: true,
-  });
-
-  const handleAddDirectory = async (path: string) => {
-    try {
-      const result = await api.addDirectory(path);
-      setSelectedDirectory(path);
-
-      const pollJob = async () => {
-        const status = await api.getJobStatus(result.job_id);
-        if (status.status === 'completed') {
-          refetchClusters();
-        } else if (status.status === 'error') {
-          console.error('Job failed:', status.errors);
-        } else {
-          setTimeout(pollJob, 1000);
-        }
-      };
-      setTimeout(pollJob, 1000);
-    } catch (error) {
-      console.error('Failed to add directory:', error);
-    }
-  };
-
-  const handleUploadFiles = async (files: FileList) => {
-    try {
-      const result = await api.uploadFiles(files);
-
-      const pollJob = async () => {
-        const status = await api.getJobStatus(result.job_id);
-        if (status.status === 'completed') {
-          refetchClusters();
-        } else if (status.status === 'error') {
-          console.error('Job failed:', status.errors);
-        } else {
-          setTimeout(pollJob, 1000);
-        }
-      };
-      setTimeout(pollJob, 1000);
-    } catch (error) {
-      console.error('Failed to upload files:', error);
-      throw error;
-    }
-  };
-
-  const handleSearch = (resultIds: number[]) => {
-    setSearchResults(resultIds);
-    // Focus on the most similar result (first one)
-    if (resultIds.length > 0 && focusOnImageRef.current) {
-      focusOnImageRef.current(resultIds[0]);
-    }
-  };
-
-  const clearSearch = () => {
-    setSearchResults(null);
-  };
-
-  const handleToggleLock = useCallback(() => {
-    setIsLocked((prev) => !prev);
-  }, []);
-
-  const handleRecenter = useCallback(() => {
-    if (recenterRef.current) {
-      recenterRef.current();
-    }
-  }, []);
-
-  const registerRecenter = useCallback((fn: () => void) => {
-    recenterRef.current = fn;
-  }, []);
-
-  const handleFocusImage = useCallback((imageId: number) => {
-    if (focusOnImageRef.current) {
-      focusOnImageRef.current(imageId);
-    }
-  }, []);
-
-  const registerFocusOnImage = useCallback((fn: (imageId: number) => void) => {
-    focusOnImageRef.current = fn;
-  }, []);
+function AppContent() {
+  const location = useLocation();
+  const isWebGL = location.pathname === '/webgl';
 
   return (
-    <div className="w-full h-screen excalidraw-bg overflow-hidden relative">
-      <ExcalidrawToolbar
-        onAddDirectory={handleAddDirectory}
-        onUploadFiles={handleUploadFiles}
-        onRefresh={() => refetchClusters()}
-        isLoadingClusters={isLoadingClusters}
-        totalImages={clustersData?.total_images}
-        clusterCount={clustersData?.clusters.length}
-        isLocked={isLocked}
-        onToggleLock={handleToggleLock}
-        onRecenter={handleRecenter}
-        onFocusImage={handleFocusImage}
-      />
+    <>
+      {/* Mode Switcher */}
+      <div className="fixed bottom-4 left-4 z-50 bg-white/90 backdrop-blur border rounded-full px-4 py-2 shadow-lg flex gap-4 text-sm font-medium">
+        <Link
+          to="/"
+          className={`hover:text-primary transition-colors ${isWebGL ? 'text-blue-600 font-bold' : 'text-gray-500'}`}
+        >
+          Konva (2D)
+        </Link>
+        <div className="w-px bg-gray-300"></div>
+        <Link
+          to="/webgl"
+          className={`hover:text-primary transition-colors ${isWebGL ? 'text-purple-600 font-bold' : 'text-gray-500'}`}
+        >
+          WebGL (Pixi)
+        </Link>
+      </div>
 
-      {clustersData && (
-        <InfiniteCanvas
-          clusters={clustersData.clusters}
-          images={clustersData.images}
-          searchResults={searchResults}
-          isLocked={isLocked}
-          onToggleLock={handleToggleLock}
-          onRecenter={handleRecenter}
-          registerRecenter={registerRecenter}
-          registerFocusOnImage={registerFocusOnImage}
-        />
-      )}
+      <Routes>
+        <Route path="/" element={<KonvaPage />} />
+        <Route path="/webgl" element={<WebGLPage />} />
+      </Routes>
+    </>
+  );
+}
 
-      <SearchBar
-        onSearch={handleSearch}
-        onClearSearch={clearSearch}
-        hasActiveSearch={searchResults !== null}
-      />
-
-      <ImageViewer />
-    </div>
+function App() {
+  return (
+    <BrowserRouter>
+      <AppContent />
+    </BrowserRouter>
   );
 }
 

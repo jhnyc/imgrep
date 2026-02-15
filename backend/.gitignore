@@ -10,6 +10,7 @@ wheels/
 .venv
 .env
 
-data/*
+app/data/*
+data/
 
 .DS_Store

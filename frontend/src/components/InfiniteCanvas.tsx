@@ -15,6 +15,7 @@ interface InfiniteCanvasProps {
   onRecenter: () => void;
   registerRecenter: (fn: () => void) => void;
   registerFocusOnImage: (fn: (imageId: number) => void) => void;
+  explosionEnabled?: boolean;
 }
 
 export default function InfiniteCanvas({
@@ -22,8 +23,11 @@ export default function InfiniteCanvas({
   images,
   searchResults,
   isLocked,
+  onToggleLock,
+  onRecenter,
   registerRecenter,
   registerFocusOnImage,
+  explosionEnabled = false,
 }: InfiniteCanvasProps) {
   const {
     viewport,
@@ -58,12 +62,46 @@ export default function InfiniteCanvas({
     return { grouped, noiseImages };
   }, [clusters, images]);
 
+  const relaxedClusters = useMemo(() => {
+    if (!explosionEnabled) return clusters;
+
+    let positions = clusters.map(c => ({ ...c }));
+    const iterations = 5;
+    const minDistance = 300; // Cluster nodes are larger
+
+    for (let i = 0; i < iterations; i++) {
+      for (let j = 0; j < positions.length; j++) {
+        for (let k = j + 1; k < positions.length; k++) {
+          const cA = positions[j];
+          const cB = positions[k];
+
+          const dx = cB.x - cA.x;
+          const dy = cB.y - cA.y;
+          const distanceSq = dx * dx + dy * dy;
+
+          if (distanceSq < minDistance * minDistance && distanceSq > 0) {
+            const distance = Math.sqrt(distanceSq);
+            const force = (minDistance - distance) / distance * 0.5;
+            const fx = dx * force;
+            const fy = dy * force;
+
+            positions[j].x -= fx;
+            positions[j].y -= fy;
+            positions[k].x += fx;
+            positions[k].y += fy;
+          }
+        }
+      }
+    }
+    return positions;
+  }, [clusters, explosionEnabled]);
+
   // Build a map of image positions for quick lookup
   const imagePositions = useMemo(() => {
     const positions = new Map<number, { x: number; y: number }>();
 
-    // Images in clusters - use cluster position (since they're grouped there)
-    clusters.forEach((cluster) => {
+    // Images in clusters - use relaxed cluster position
+    relaxedClusters.forEach((cluster) => {
       const clusterImages = imagesByCluster.grouped.get(cluster.id) || [];
       clusterImages.forEach((img) => {
         positions.set(img.id, { x: cluster.x, y: cluster.y });
@@ -81,20 +119,43 @@ export default function InfiniteCanvas({
     });
 
     return positions;
-  }, [clusters, imagesByCluster]);
+  }, [relaxedClusters, imagesByCluster]);
+
+  // Viewport Culling Calculation
+  const visibleBounds = useMemo(() => {
+    const buffer = 500; // Render items 500px outside viewport
+    // Calculate world coordinates of the viewport
+    const x = -viewport.x / viewport.scale;
+    const y = -viewport.y / viewport.scale;
+    const width = window.innerWidth / viewport.scale;
+    const height = window.innerHeight / viewport.scale;
+
+    return {
+      minX: x - buffer,
+      maxX: x + width + buffer,
+      minY: y - buffer,
+      maxY: y + height + buffer,
+    };
+  }, [viewport]);
+
+  const isVisible = (x: number, y: number, radius = 100) => {
+    return (
+      x + radius > visibleBounds.minX &&
+      x - radius < visibleBounds.maxX &&
+      y + radius > visibleBounds.minY &&
+      y - radius < visibleBounds.maxY
+    );
+  };
 
   // Register recenter function
   useEffect(() => {
     const recenter = () => {
-      const points = clusters.map(c => ({ x: c.x, y: c.y }));
+      const points = relaxedClusters.map(c => ({ x: c.x, y: c.y }));
 
-      imagesByCluster.noiseImages.forEach((_, i) => {
-        const angle = (i / imagesByCluster.noiseImages.length) * Math.PI * 2;
-        const radius = 1800;
-        points.push({
-          x: Math.cos(angle) * radius,
-          y: Math.sin(angle) * radius,
-        });
+      // Use pre-calculated positions for noise images
+      imagesByCluster.noiseImages.forEach((img) => {
+        const pos = imagePositions.get(img.id);
+        if (pos) points.push(pos);
       });
 
       if (points.length > 0) {
@@ -103,7 +164,7 @@ export default function InfiniteCanvas({
     };
 
     registerRecenter(recenter);
-  }, [clusters, imagesByCluster.noiseImages, centerOnPoints, registerRecenter]);
+  }, [relaxedClusters, imagesByCluster.noiseImages, centerOnPoints, registerRecenter, imagePositions]);
 
   // Register focus on image function
   useEffect(() => {
@@ -141,7 +202,10 @@ export default function InfiniteCanvas({
       >
         <Layer>
           {/* Draw connections between images in clusters */}
-          {clusters.map((cluster) => {
+          {relaxedClusters.map((cluster) => {
+            // Cull invisible clusters
+            if (!isVisible(cluster.x, cluster.y, 200)) return null;
+
             const clusterImages = imagesByCluster.grouped.get(cluster.id) || [];
             const expanded = isClusterExpanded(cluster.id);
 
@@ -157,6 +221,7 @@ export default function InfiniteCanvas({
                   radius={2}
                   fill="#4b5563"
                   opacity={0.3}
+                  perfectDrawEnabled={false}
                 />
               );
             });
@@ -165,11 +230,17 @@ export default function InfiniteCanvas({
           })}
 
           {/* Draw cluster nodes */}
-          {clusters.map((cluster) => {
+          {relaxedClusters.map((cluster) => {
+            // Cull invisible clusters
+            if (!isVisible(cluster.x, cluster.y, 200)) return null;
+
             const clusterImages = imagesByCluster.grouped.get(cluster.id) || [];
             const isDimmed = Boolean(
               searchResults && !clusterImages.some((img) => searchResults.includes(img.id))
             );
+
+            // LOD: Hide details when zoomed out
+            const isLowDetail = viewport.scale < 0.45;
 
             return (
               <ClusterNode
@@ -180,27 +251,33 @@ export default function InfiniteCanvas({
                 onHover={() => handleClusterHover(cluster.id)}
                 onUnhover={() => handleClusterHover(null)}
                 isDimmed={isDimmed}
+                isLowDetail={isLowDetail}
               />
             );
           })}
 
           {/* Draw noise images (not in any cluster) */}
-          {imagesByCluster.noiseImages.map((img, i) => {
+          {imagesByCluster.noiseImages.map((img) => {
+            const pos = imagePositions.get(img.id);
+            if (!pos) return null; // Should not happen
+
+            // Cull invisible images
+            if (!isVisible(pos.x, pos.y, 100)) return null;
+
             const isDimmed = Boolean(
               searchResults && !searchResults.includes(img.id)
             );
-            const angle = (i / imagesByCluster.noiseImages.length) * Math.PI * 2;
-            const radius = 1800;
-            const x = Math.cos(angle) * radius;
-            const y = Math.sin(angle) * radius;
+
+            const isLowDetail = viewport.scale < 0.45;
 
             return (
               <ImageItem
                 key={img.id}
                 image={img}
-                x={x}
-                y={y}
+                x={pos.x}
+                y={pos.y}
                 isDimmed={isDimmed}
+                isLowDetail={isLowDetail}
               />
             );
           })}

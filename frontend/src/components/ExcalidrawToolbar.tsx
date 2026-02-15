@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import {
     ArrowDownAZ,
     Check,
@@ -8,15 +9,18 @@ import {
     FolderPlus,
     Lock,
     MousePointer2,
+    Play,
     RefreshCw,
     Search,
+    Settings,
     Unlock,
     Upload,
-    X
+    X,
+    Zap
 } from 'lucide-react';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import type { ImageListItem } from '../api/client';
-import { api } from '../api/client';
+import { api, queryKeys } from '../api/client';
 
 interface ExcalidrawToolbarProps {
     onAddDirectory: (path: string) => Promise<void>;
@@ -29,6 +33,16 @@ interface ExcalidrawToolbarProps {
     onToggleLock: () => void;
     onRecenter: () => void;
     onFocusImage: (imageId: number) => void;
+    currentStrategy: string;
+    onStrategyChange: (strategy: string) => void;
+    currentProjection: string;
+    onProjectionChange: (projection: string) => void;
+    currentOverlap: string;
+    onOverlapChange: (overlap: string) => void;
+    jitterAmount: number;
+    onJitterAmountChange: (amount: number) => void;
+    explosionEnabled: boolean;
+    onExplosionEnabledChange: (enabled: boolean) => void;
 }
 
 type SortOption = 'name' | 'newest' | 'oldest';
@@ -44,9 +58,20 @@ export default function ExcalidrawToolbar({
     onToggleLock,
     onRecenter,
     onFocusImage,
+    currentStrategy,
+    onStrategyChange,
+    currentProjection,
+    onProjectionChange,
+    currentOverlap,
+    onOverlapChange,
+    jitterAmount,
+    onJitterAmountChange,
+    explosionEnabled,
+    onExplosionEnabledChange,
 }: ExcalidrawToolbarProps) {
     const [showAddDirModal, setShowAddDirModal] = useState(false);
     const [showStatsDropdown, setShowStatsDropdown] = useState(false);
+    const [showSettingsDropdown, setShowSettingsDropdown] = useState(false);
 
     const [directoryPath, setDirectoryPath] = useState('');
     const [isAddingDir, setIsAddingDir] = useState(false);
@@ -59,6 +84,31 @@ export default function ExcalidrawToolbar({
     const [images, setImages] = useState<ImageListItem[]>([]);
     const [isLoadingImages, setIsLoadingImages] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const settingsRef = useRef<HTMLDivElement>(null);
+
+    // Fetch clustering status
+    const { data: statusData, refetch: refetchStatus } = useQuery({
+        queryKey: queryKeys.clusteringStatus(),
+        queryFn: () => api.getClusteringStatus(),
+        refetchInterval: 5000,
+    });
+
+    const isBuilt = (strategy: string, projection: string, overlap: string = 'none') => {
+        return statusData?.built_combinations.some(
+            c => c.strategy === strategy &&
+                c.projection_strategy === projection &&
+                c.overlap_strategy === overlap
+        );
+    };
+
+    const handleBuild = async (s: string, p: string, o: string = 'none') => {
+        try {
+            await api.recomputeClusters(s, p, o, { jitter_amount: jitterAmount });
+            refetchStatus();
+        } catch (err) {
+            console.error('Failed to build:', err);
+        }
+    };
 
     const closeModal = () => {
         setShowAddDirModal(false);
@@ -84,28 +134,41 @@ export default function ExcalidrawToolbar({
     };
 
     // Fetch images when dropdown opens or search/sort changes
+    // Fetch images with polling
+    const fetchImages = useCallback(async (showLoading = true) => {
+        if (showLoading) setIsLoadingImages(true);
+        try {
+            const result = await api.listImages(
+                filenameSearch || undefined,
+                sortBy,
+                50
+            );
+            setImages(prev => {
+                if (JSON.stringify(prev) === JSON.stringify(result.images)) {
+                    return prev;
+                }
+                return result.images;
+            });
+        } catch (err) {
+            console.error('Failed to fetch images:', err);
+        } finally {
+            if (showLoading) setIsLoadingImages(false);
+        }
+    }, [filenameSearch, sortBy]);
+
+    // Initial fetch and on search/sort change
     useEffect(() => {
-        if (!showStatsDropdown) return;
-
-        const fetchImages = async () => {
-            setIsLoadingImages(true);
-            try {
-                const result = await api.listImages(
-                    filenameSearch || undefined,
-                    sortBy,
-                    50
-                );
-                setImages(result.images);
-            } catch (err) {
-                console.error('Failed to fetch images:', err);
-            } finally {
-                setIsLoadingImages(false);
-            }
-        };
-
-        const debounce = setTimeout(fetchImages, 300);
+        const debounce = setTimeout(() => fetchImages(true), 300);
         return () => clearTimeout(debounce);
-    }, [showStatsDropdown, filenameSearch, sortBy]);
+    }, [fetchImages]);
+
+    // Poll every 5 seconds
+    useEffect(() => {
+        const interval = setInterval(() => {
+            fetchImages(false);
+        }, 5000);
+        return () => clearInterval(interval);
+    }, [fetchImages]);
 
     // Close dropdown on click outside
     useEffect(() => {
@@ -120,6 +183,20 @@ export default function ExcalidrawToolbar({
         }
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [showStatsDropdown]);
+
+    // Close settings dropdown on click outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+                setShowSettingsDropdown(false);
+            }
+        };
+
+        if (showSettingsDropdown) {
+            document.addEventListener('mousedown', handleClickOutside);
+        }
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, [showSettingsDropdown]);
 
     const handleImageClick = (imageId: number) => {
         onFocusImage(imageId);
@@ -178,6 +255,166 @@ export default function ExcalidrawToolbar({
                         icon={<RefreshCw size={18} strokeWidth={1.5} className={isLoadingClusters ? "animate-spin" : ""} />}
                         title="Refresh"
                     />
+
+                    <div className="w-px h-6 bg-gray-200 mx-0.5" />
+
+                    <div className="relative flex items-center pr-2" ref={settingsRef}>
+                        <ToolButton
+                            active={showSettingsDropdown}
+                            onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
+                            icon={<Settings size={18} strokeWidth={1.5} />}
+                            title="Clustering Settings"
+                        />
+
+                        {showSettingsDropdown && (
+                            <div
+                                className="absolute top-full left-0 mt-2 w-64 bg-white/95 backdrop-blur-md rounded-xl p-3 border border-gray-100 animate-fade-in"
+                                style={{ boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}
+                            >
+                                <div className="space-y-4">
+                                    {/* Clustering Strategy Section */}
+                                    <div>
+                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">Clustering Strategy</h4>
+                                        <div className="space-y-1">
+                                            {[
+                                                { id: 'hdbscan', label: 'HDBSCAN', desc: 'Density-based' },
+                                                { id: 'kmeans', label: 'K-Means', desc: 'Centroid-based' },
+                                                { id: 'dbscan', label: 'DBSCAN', desc: 'Fixed-epsilon' },
+                                            ].map((s) => (
+                                                <div key={s.id} className="flex items-center group">
+                                                    <button
+                                                        onClick={() => onStrategyChange(s.id)}
+                                                        className={`flex-1 flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all text-left ${currentStrategy === s.id
+                                                            ? 'bg-blue-50 text-blue-600'
+                                                            : 'hover:bg-gray-50 text-gray-600'
+                                                            }`}
+                                                    >
+                                                        <div className={`w-2 h-2 rounded-full ${isBuilt(s.id, currentProjection, currentOverlap) ? 'bg-green-500' : 'bg-gray-300'}`} />
+                                                        <div className="flex-1">
+                                                            <div className="text-xs font-semibold leading-none">{s.label}</div>
+                                                            <div className="text-[10px] text-gray-400 mt-1">{s.desc}</div>
+                                                        </div>
+                                                    </button>
+                                                    {!isBuilt(s.id, currentProjection, currentOverlap) && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleBuild(s.id, currentProjection, currentOverlap); }}
+                                                            className="p-2 text-gray-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                            title="Build optimized version"
+                                                        >
+                                                            <Play size={14} fill="currentColor" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="h-px bg-gray-100" />
+
+                                    {/* Projection Strategy Section */}
+                                    <div>
+                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">2D Projection</h4>
+                                        <div className="space-y-1">
+                                            {[
+                                                { id: 'umap', label: 'UMAP', desc: 'Fast non-linear' },
+                                                { id: 'pca', label: 'PCA', desc: 'Preserves variance' },
+                                                { id: 'tsne', label: 't-SNE', desc: 'Preserves local structure' },
+                                            ].map((p) => (
+                                                <div key={p.id} className="flex items-center group">
+                                                    <button
+                                                        onClick={() => onProjectionChange(p.id)}
+                                                        className={`flex-1 flex items-center gap-2 px-2 py-1.5 rounded-lg transition-all text-left ${currentProjection === p.id
+                                                            ? 'bg-blue-50 text-blue-600'
+                                                            : 'hover:bg-gray-50 text-gray-600'
+                                                            }`}
+                                                    >
+                                                        <div className={`w-2 h-2 rounded-full ${isBuilt(currentStrategy, p.id, currentOverlap) ? 'bg-green-500' : 'bg-gray-300'}`} />
+                                                        <div className="flex-1">
+                                                            <div className="text-xs font-semibold leading-none">{p.label}</div>
+                                                            <div className="text-[10px] text-gray-400 mt-1">{p.desc}</div>
+                                                        </div>
+                                                    </button>
+                                                    {!isBuilt(currentStrategy, p.id, currentOverlap) && (
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); handleBuild(currentStrategy, p.id, currentOverlap); }}
+                                                            className="p-2 text-gray-400 hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                                            title="Build optimized version"
+                                                        >
+                                                            <Play size={14} fill="currentColor" />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div className="h-px bg-gray-100" />
+
+                                    {/* Overlap Reduction Section */}
+                                    <div>
+                                        <h4 className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2 px-1">Overlap Reduction</h4>
+                                        <div className="space-y-2">
+                                            <div className="flex bg-gray-100/50 p-0.5 rounded-lg border border-gray-100">
+                                                {['none', 'jitter'].map((o) => (
+                                                    <button
+                                                        key={o}
+                                                        onClick={() => onOverlapChange(o)}
+                                                        className={`flex-1 px-2 py-1 text-[10px] font-bold rounded-md transition-all ${currentOverlap === o
+                                                            ? 'bg-white text-blue-600 shadow-sm'
+                                                            : 'text-gray-400 hover:text-gray-600'
+                                                            }`}
+                                                    >
+                                                        {o.toUpperCase()}
+                                                    </button>
+                                                ))}
+                                            </div>
+
+                                            {currentOverlap === 'jitter' && (
+                                                <div className="px-1 py-1">
+                                                    <div className="flex justify-between text-[9px] font-bold text-gray-400 mb-1">
+                                                        <span>JITTER AMOUNT</span>
+                                                        <span className="text-blue-500">{jitterAmount}px</span>
+                                                    </div>
+                                                    <input
+                                                        type="range"
+                                                        min="5"
+                                                        max="50"
+                                                        step="5"
+                                                        value={jitterAmount}
+                                                        onChange={(e) => onJitterAmountChange(parseInt(e.target.value))}
+                                                        className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                                    />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="h-px bg-gray-100" />
+
+                                    {/* Interactive Explosion Toggle */}
+                                    <div className="flex items-center justify-between px-1">
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-1.5 bg-orange-50 text-orange-500 rounded-lg">
+                                                <Zap size={14} fill="currentColor" />
+                                            </div>
+                                            <div>
+                                                <div className="text-xs font-semibold leading-none">Explosion Effect</div>
+                                                <div className="text-[10px] text-gray-400 mt-1">Fan out dense areas</div>
+                                            </div>
+                                        </div>
+                                        <button
+                                            onClick={() => onExplosionEnabledChange(!explosionEnabled)}
+                                            className={`w-8 h-4 rounded-full transition-colors relative ${explosionEnabled ? 'bg-blue-500' : 'bg-gray-200'
+                                                }`}
+                                        >
+                                            <div className={`absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full transition-transform ${explosionEnabled ? 'translate-x-4' : ''
+                                                }`} />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
             </div>
 
@@ -548,3 +785,4 @@ function SortButton({
         </button>
     );
 }
+

@@ -3,36 +3,15 @@ from typing import List, Literal, Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse
-from pydantic import BaseModel
 from sqlalchemy import select, func
 
-from ..database import AsyncSessionLocal
-from ..models import Image
-from ..constants import DATA_DIR
+from ..core.database import AsyncSessionLocal
+from ..models.sql import Image
+from ..core.config import DATA_DIR
+from ..schemas.image import ImageDetails, ImageListItem, ImageListResponse
 
 
 router = APIRouter(prefix="/api/images", tags=["images"])
-
-
-class ImageDetails(BaseModel):
-    id: int
-    file_path: str
-    file_name: str
-    width: Optional[int]
-    height: Optional[int]
-    thumbnail_url: str
-    cluster_label: Optional[int] = None
-
-
-class ImageListItem(BaseModel):
-    id: int
-    file_name: str
-    thumbnail_url: str
-
-
-class ImageListResponse(BaseModel):
-    images: List[ImageListItem]
-    total: int
 
 
 @router.get("/list", response_model=ImageListResponse)

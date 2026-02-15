@@ -28,15 +28,26 @@ export interface ImagePosition {
 export interface ClustersResponse {
   clustering_run_id: number;
   strategy: string;
+  projection_strategy: string;
   clusters: ClusterNode[];
   images: ImagePosition[];
   total_images: number;
+}
+
+export interface ClusteringStatus {
+  built_combinations: {
+    strategy: string;
+    projection_strategy: string;
+    overlap_strategy: string;
+  }[];
 }
 
 export interface SearchResult {
   image_id: number;
   similarity: number;
   thumbnail_url: string;
+  x?: number;
+  y?: number;
 }
 
 export interface SearchResponse {
@@ -107,9 +118,11 @@ export const api = {
   },
 
   // Clusters
-  getClusters: async (strategy = 'hdbscan', forceRecompute = false): Promise<ClustersResponse> => {
+  getClusters: async (strategy = 'hdbscan', projection_strategy = 'umap', overlap_strategy = 'none', forceRecompute = false): Promise<ClustersResponse> => {
     const params = new URLSearchParams({
       strategy,
+      projection_strategy,
+      overlap_strategy,
       ...(forceRecompute && { force_recompute: 'true' }),
     });
     const response = await fetch(`${API_BASE}/api/clusters?${params}`);
@@ -117,11 +130,22 @@ export const api = {
     return response.json();
   },
 
-  recomputeClusters: async (strategy = 'hdbscan', parameters?: Record<string, unknown>): Promise<ClustersResponse> => {
+  getClusteringStatus: async (): Promise<ClusteringStatus> => {
+    const response = await fetch(`${API_BASE}/api/clusters/status`);
+    if (!response.ok) throw new Error('Failed to get clustering status');
+    return response.json();
+  },
+
+  recomputeClusters: async (strategy = 'hdbscan', projection_strategy = 'umap', overlap_strategy = 'none', parameters?: Record<string, unknown>): Promise<ClustersResponse> => {
     const response = await fetch(`${API_BASE}/api/clusters/recompute`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ strategy, parameters }),
+      body: JSON.stringify({
+        strategy,
+        projection_strategy,
+        overlap_strategy,
+        parameters,
+      }),
     });
     if (!response.ok) throw new Error('Failed to recompute clusters');
     return response.json();
@@ -156,21 +180,46 @@ export const api = {
   },
 
   // Search
-  searchText: async (query: string, topK = 20): Promise<SearchResponse> => {
+  searchText: async (
+    query: string, 
+    topK = 20, 
+    strategy = 'hdbscan', 
+    projection_strategy = 'umap', 
+    overlap_strategy = 'none'
+  ): Promise<SearchResponse> => {
     const response = await fetch(`${API_BASE}/api/search/text`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, top_k: topK }),
+      body: JSON.stringify({ 
+        query, 
+        top_k: topK,
+        strategy,
+        projection_strategy,
+        overlap_strategy
+      }),
     });
     if (!response.ok) throw new Error('Failed to search by text');
     return response.json();
   },
 
-  searchImage: async (file: File, topK = 20): Promise<SearchResponse> => {
+  searchImage: async (
+    file: File, 
+    topK = 20,
+    strategy = 'hdbscan', 
+    projection_strategy = 'umap', 
+    overlap_strategy = 'none'
+  ): Promise<SearchResponse> => {
     const formData = new FormData();
     formData.append('file', file);
 
-    const response = await fetch(`${API_BASE}/api/search/image?top_k=${topK}`, {
+    const params = new URLSearchParams({
+      top_k: String(topK),
+      strategy,
+      projection_strategy,
+      overlap_strategy
+    });
+
+    const response = await fetch(`${API_BASE}/api/search/image?${params}`, {
       method: 'POST',
       body: formData,
     });
@@ -182,8 +231,9 @@ export const api = {
 // Query keys for React Query
 export const queryKeys = {
   jobStatus: (jobId: string) => ['job', jobId] as const,
-  clusters: (strategy: string, forceRecompute: boolean) =>
-    ['clusters', strategy, forceRecompute] as const,
+  clusters: (strategy: string, projectionStrategy: string, overlapStrategy: string, forceRecompute: boolean) =>
+    ['clusters', strategy, projectionStrategy, overlapStrategy, forceRecompute] as const,
   imageDetails: (imageId: number) => ['image', imageId] as const,
   searchResults: (query: string) => ['search', query] as const,
+  clusteringStatus: () => ['clusters', 'status'] as const,
 };
