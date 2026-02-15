@@ -15,7 +15,6 @@ import {
     Settings,
     Unlock,
     Upload,
-    X,
     Zap
 } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
@@ -518,13 +517,6 @@ export default function ExcalidrawToolbar({
                         className="bg-white rounded-2xl p-5 w-80 md:w-96 relative animate-fade-in"
                         style={{ boxShadow: '0 0 0 1px rgba(0,0,0,0.08), 0 8px 32px rgba(0,0,0,0.12)' }}
                     >
-                        <button
-                            onClick={closeModal}
-                            className="absolute top-3 right-3 w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-all"
-                        >
-                            <X size={16} strokeWidth={2} />
-                        </button>
-                        <h3 className="font-semibold text-gray-800 text-base mb-4">Add Images</h3>
 
                         {/* Drag & Drop Zone */}
                         <div
@@ -608,15 +600,14 @@ export default function ExcalidrawToolbar({
                             ) : (
                                 <Upload size={32} strokeWidth={1.5} className="mx-auto text-gray-400 mb-3" />
                             )}
-                            <p className="text-sm text-gray-600 font-medium">
+                            <p className="text-xs text-gray-600 font-medium">
                                 {isAddingDir ? 'Uploading images...' : 'Drop images or folder here'}
                             </p>
-                            <p className="text-xs text-gray-400 mt-1">or select files below</p>
                         </div>
 
                         {/* File Picker Buttons */}
                         <div className="mt-4 flex gap-2">
-                            <label className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-xl cursor-pointer transition-all flex items-center justify-center gap-2 text-sm font-medium text-gray-600">
+                            <label className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-xl cursor-pointer transition-all flex items-center justify-center gap-2 text-xs font-medium text-gray-600">
                                 <FolderOpen size={18} strokeWidth={2} />
                                 <span>Select Folder</span>
                                 <input
@@ -642,7 +633,7 @@ export default function ExcalidrawToolbar({
                                     }}
                                 />
                             </label>
-                            <label className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-xl cursor-pointer transition-all flex items-center justify-center gap-2 text-sm font-medium text-gray-600">
+                            <label className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 border border-gray-200 rounded-xl cursor-pointer transition-all flex items-center justify-center gap-2 text-xs font-medium text-gray-600">
                                 <Upload size={18} strokeWidth={2} />
                                 <span>Select Files</span>
                                 <input
@@ -667,55 +658,6 @@ export default function ExcalidrawToolbar({
                                     }}
                                 />
                             </label>
-                        </div>
-
-                        {/* Manual Path Entry */}
-                        <div className="mt-4 pt-4 border-t border-gray-100">
-                            <p className="text-xs text-gray-400 text-center mb-2">Or enter server path directly</p>
-                            <form onSubmit={async (e) => {
-                                e.preventDefault();
-                                if (!directoryPath.trim()) return;
-                                setIsAddingDir(true);
-                                setAddDirError(null);
-                                try {
-                                    await onAddDirectory(directoryPath.trim());
-                                    setDirectoryPath('');
-                                    closeModal();
-                                } catch (error: any) {
-                                    setAddDirError(error.message || 'Failed to add directory');
-                                } finally {
-                                    setIsAddingDir(false);
-                                }
-                            }}>
-                                <div className="flex gap-2">
-                                    <input
-                                        type="text"
-                                        value={directoryPath}
-                                        onChange={(e) => {
-                                            setDirectoryPath(e.target.value);
-                                            setAddDirError(null);
-                                        }}
-                                        className={`flex-1 px-3 py-2 rounded-xl border bg-gray-50/50 focus:outline-none focus:ring-2 transition-all font-mono text-sm ${addDirError
-                                            ? 'border-red-300 focus:ring-red-100 focus:border-red-400'
-                                            : 'border-gray-200 focus:ring-blue-500/20 focus:border-blue-400'
-                                            }`}
-                                        placeholder="/Users/name/Photos"
-                                    />
-                                    <button
-                                        type="submit"
-                                        disabled={isAddingDir || !directoryPath.trim()}
-                                        className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl transition-all text-sm font-semibold disabled:opacity-50 disabled:cursor-not-allowed"
-                                    >
-                                        Add
-                                    </button>
-                                </div>
-                                {addDirError && (
-                                    <p className="text-red-500 text-xs mt-2 font-medium flex items-center gap-1">
-                                        <X size={12} strokeWidth={2} />
-                                        {addDirError}
-                                    </p>
-                                )}
-                            </form>
                         </div>
                     </div>
                 </div>
