@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Optional, List, Dict, TYPE_CHECKING
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..models.sql import TrackedDirectory, Image, DirectorySnapshot, MerkleNode
@@ -146,9 +146,54 @@ class DirectorySyncService:
             if not tracked_dir:
                 return False
 
+            # 1. Clean up images in this directory
+            # We match by path prefix
+            dir_path_prefix = tracked_dir.path
+            if not dir_path_prefix.endswith('/'):
+                dir_path_prefix += '/'
+
+            # Find images belonging to this directory
+            img_result = await session.execute(
+                select(Image).where(Image.file_path.like(f"{dir_path_prefix}%"))
+            )
+            images = img_result.scalars().all()
+
+            if images:
+                image_ids = [img.id for img in images]
+                image_id_strs = [str(id_) for id_ in image_ids]
+                embedding_ids = [img.embedding_id for img in images if img.embedding_id]
+                
+                print(f"[INFO] Removing {len(image_ids)} images associated with directory: {tracked_dir.path}")
+                
+                # 1. Remove from vector store
+                try:
+                    if self._vector_store:
+                        self._vector_store.delete_by_ids(ids=image_id_strs)
+                except Exception as e:
+                    print(f"[ERROR] Failed to remove images from vector store: {e}")
+
+                # 2. Remove cluster assignments
+                from ..models.sql import ClusterAssignment
+                await session.execute(
+                    delete(ClusterAssignment).where(ClusterAssignment.image_id.in_(image_ids))
+                )
+
+                # 3. Remove images
+                for img in images:
+                    await session.delete(img)
+                
+                # 4. Remove embeddings
+                if embedding_ids:
+                    from ..models.sql import Embedding
+                    await session.execute(
+                        delete(Embedding).where(Embedding.id.in_(embedding_ids))
+                    )
+
+            # 2. Clean up strategy-specific data
             strategy = get_sync_strategy(tracked_dir.sync_strategy)
             await strategy.cleanup(tracked_dir, session)
 
+            # 3. Remove the directory record
             await session.delete(tracked_dir)
             await session.commit()
             return True
@@ -295,6 +340,19 @@ class DirectorySyncService:
                         self._vector_store.delete_by_ids(ids=[str(image.id)])
                 except Exception as e:
                     print(f"[ERROR] Failed to delete from Chroma: {e}")
+
+                # Clean up assignments
+                from ..models.sql import ClusterAssignment
+                await session.execute(
+                    delete(ClusterAssignment).where(ClusterAssignment.image_id == image.id)
+                )
+
+                # Clean up embedding if it exists
+                if image.embedding_id:
+                    from ..models.sql import Embedding
+                    await session.execute(
+                        delete(Embedding).where(Embedding.id == image.embedding_id)
+                    )
 
                 await session.delete(image)
 

@@ -62,8 +62,8 @@ class ClusterAssignment(Base):
     __tablename__ = "cluster_assignments"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    clustering_run_id: Mapped[int] = mapped_column(ForeignKey("clustering_runs.id"), index=True)
-    image_id: Mapped[int] = mapped_column(ForeignKey("images.id"), index=True)
+    clustering_run_id: Mapped[int] = mapped_column(ForeignKey("clustering_runs.id", ondelete="CASCADE"), index=True)
+    image_id: Mapped[int] = mapped_column(ForeignKey("images.id", ondelete="CASCADE"), index=True)
     cluster_label: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
     x: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     y: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

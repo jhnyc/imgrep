@@ -134,6 +134,12 @@ export function SettingsDialog({
         refetchInterval: open ? 2000 : undefined,
     });
 
+    useEffect(() => {
+        if (open && jobsData) {
+            console.log("[DEBUG] Active Jobs Data:", jobsData.jobs);
+        }
+    }, [open, jobsData]);
+
     const handleAddDir = async () => {
         if (!newDirPath.trim()) return;
         setIsAddingDir(true);
@@ -168,7 +174,7 @@ export function SettingsDialog({
         { id: 'clustering', label: 'Clustering', icon: Layers },
     ];
 
-    const activeJobs = jobsData?.jobs.filter(j => j.status === 'processing') || [];
+    const activeJobs = jobsData?.jobs.filter(j => j.status === 'processing' || j.status === 'pending') || [];
     const totalProcessed = activeJobs.reduce((acc, job) => acc + job.processed, 0);
     const totalImages = activeJobs.reduce((acc, job) => acc + job.total, 0);
     const overallProgress = totalImages > 0 ? (totalProcessed / totalImages) * 100 : 0;
@@ -217,15 +223,6 @@ export function SettingsDialog({
                                 <h1 className="text-[20px] font-bold text-gray-900">
                                     {sidebarItems.find(i => i.id === activeTab)?.label}
                                 </h1>
-                                {activeJobs.length > 0 && totalImages > 0 && (
-                                    <div className="mt-4 space-y-2">
-                                        <div className="flex justify-between text-[12px] font-medium text-gray-500">
-                                            <span>Processing {totalImages.toLocaleString()} images...</span>
-                                            <span>{Math.round(overallProgress)}%</span>
-                                        </div>
-                                        <Progress value={overallProgress} className="h-1.5" />
-                                    </div>
-                                )}
                             </div>
 
                             <ScrollArea className="flex-1 px-10 pb-10">
@@ -238,6 +235,23 @@ export function SettingsDialog({
                                                     <h2 className="text-[16px] font-semibold text-gray-900">Connected Sources</h2>
                                                     <p className="text-[13px] text-gray-500">Manage the folders indexed in your workspace.</p>
                                                 </div>
+
+                                                {activeJobs.length > 0 && (
+                                                    <div className="p-4 bg-blue-50/50 rounded-lg border border-blue-100 space-y-3">
+                                                        <div className="flex justify-between items-end">
+                                                            <div className="space-y-0.5">
+                                                                <div className="text-[13px] font-semibold text-blue-900">Syncing workspace...</div>
+                                                                <div className="text-[12px] text-blue-700/70">
+                                                                    {totalProcessed.toLocaleString()} of {totalImages.toLocaleString()} images processed
+                                                                </div>
+                                                            </div>
+                                                            <div className="text-[14px] font-bold text-blue-900">
+                                                                {Math.round(overallProgress)}%
+                                                            </div>
+                                                        </div>
+                                                        <Progress value={overallProgress} className="h-2 bg-blue-100" />
+                                                    </div>
+                                                )}
 
                                                 <div className="flex gap-2">
                                                     <Input
@@ -511,8 +525,8 @@ export function SettingsDialog({
 }
 
 function DirectoryItem({ directory, job, onRemove }: { directory: TrackedDirectory, job?: JobStatus, onRemove: (id: number) => void }) {
-    const isProcessing = job && job.status === 'processing';
-    const progress = job ? (job.processed / job.total) * 100 : 100;
+    const isProcessing = job && (job.status === 'processing' || job.status === 'pending');
+    const progress = job && job.total > 0 ? (job.processed / job.total) * 100 : (job?.status === 'completed' ? 100 : 0);
 
     return (
         <div className="py-4 flex flex-col gap-3 group transition-colors">
@@ -520,7 +534,7 @@ function DirectoryItem({ directory, job, onRemove }: { directory: TrackedDirecto
                 <div className="flex items-center gap-3 min-w-0">
                     <div className={cn(
                         "p-1.5 rounded bg-gray-50 text-gray-400 shrink-0",
-                        isProcessing && "text-blue-500 bg-blue-50"
+                        isProcessing && "text-blue-500 bg-blue-50 animate-pulse"
                     )}>
                         <HardDrive size={16} />
                     </div>
@@ -530,15 +544,30 @@ function DirectoryItem({ directory, job, onRemove }: { directory: TrackedDirecto
                             <span className="capitalize">{directory.sync_strategy} sync</span>
                             <span>•</span>
                             <span>{directory.file_count ? `${directory.file_count} files` : '0 files'}</span>
-                            <span>•</span>
-                            <span>{directory.last_synced_at ? `Last synced: ${new Date(directory.last_synced_at).toLocaleString()}` : 'Last synced: Never'}</span>
+                            {directory.last_synced_at && !isProcessing && (
+                                <>
+                                    <span>•</span>
+                                    <span>Last synced: {new Date(directory.last_synced_at).toLocaleString()}</span>
+                                </>
+                            )}
+                            {isProcessing && (
+                                <>
+                                    <span>•</span>
+                                    <span className="text-blue-600 font-medium animate-pulse">Syncing...</span>
+                                </>
+                            )}
                         </div>
                     </div>
                 </div>
                 {isProcessing ? (
-                    <div className="flex items-center gap-3">
-                        <div className="text-[12px] font-medium text-blue-600">
-                            {job.processed} / {job.total} images
+                    <div className="flex items-center gap-3 shrink-0">
+                        <div className="text-right">
+                            <div className="text-[12px] font-bold text-blue-600">
+                                {Math.round(progress)}%
+                            </div>
+                            <div className="text-[10px] text-blue-400 font-medium">
+                                {job.processed} / {job.total}
+                            </div>
                         </div>
                         <Loader2 size={14} className="animate-spin text-blue-500" />
                     </div>
@@ -554,7 +583,9 @@ function DirectoryItem({ directory, job, onRemove }: { directory: TrackedDirecto
                 )}
             </div>
             {isProcessing && (
-                <Progress value={progress} className="h-1 bg-blue-100" />
+                <div className="space-y-1.5">
+                    <Progress value={progress} className="h-1 bg-blue-100" />
+                </div>
             )}
         </div>
     );
