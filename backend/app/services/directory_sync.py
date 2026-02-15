@@ -59,26 +59,34 @@ class DirectorySyncService:
 
     async def _sync_loop(self) -> None:
         """Main sync loop - periodically check and sync directories."""
-        CHECK_INTERVAL = 5  # Check every 5 seconds
+        CHECK_INTERVAL = 10  # Check every 10 seconds
         
         while not self._ensure_stop_event().is_set():
             try:
                 if self._sync_enabled:
-                    directories = await self.list_tracked_directories()
+                    async with AsyncSessionLocal() as session:
+                        result = await session.execute(
+                            select(TrackedDirectory).where(TrackedDirectory.is_active == True)
+                        )
+                        directories = result.scalars().all()
 
-                    for dir_info in directories:
-                        if self._ensure_stop_event().is_set():
-                            break
+                        for tracked_dir in directories:
+                            if self._ensure_stop_event().is_set():
+                                break
 
-                        if self._should_sync_directory(dir_info):
-                            await self._sync_with_error_handling(dir_info)
+                            if self._should_sync_directory_obj(tracked_dir):
+                                print(f"[INFO] Background sync triggered for: {tracked_dir.path}")
+                                await self._sync_with_error_handling_obj(tracked_dir)
             except asyncio.CancelledError:
-                raise
-            except Exception:
-                pass
+                break
+            except Exception as e:
+                print(f"[ERROR] Error in sync loop: {e}")
 
-            # Shorter sleep to be responsive
-            await asyncio.sleep(CHECK_INTERVAL)
+            # Shorter sleep to be responsive to stop_event or settings changes
+            try:
+                await asyncio.sleep(CHECK_INTERVAL)
+            except asyncio.CancelledError:
+                break
 
     async def add_tracked_directory(
         self,
@@ -245,39 +253,50 @@ class DirectorySyncService:
         job_id: Optional[str] = None,
     ) -> None:
         """Process changes from sync result - index new/modified images, handle deletions."""
-        if not (sync_result.added or sync_result.modified or sync_result.deleted):
-            return
+        try:
+            if sync_result.deleted:
+                await self._handle_deleted_files(tracked_dir, sync_result.deleted, session)
 
-        if sync_result.deleted:
-            await self._handle_deleted_files(sync_result.deleted, session)
+            files_to_index = sync_result.added + sync_result.modified
+            if files_to_index:
+                await self._index_files(files_to_index, tracked_dir, session, job_id=job_id)
 
-        files_to_index = sync_result.added + sync_result.modified
-        if files_to_index:
-            await self._index_files(files_to_index, tracked_dir, session, job_id=job_id)
-
-        await session.commit()
+            # Always update sync metadata on success
+            tracked_dir.last_synced_at = datetime.now(timezone.utc)
+            tracked_dir.last_error = None
+            
+            await session.commit()
+            print(f"[INFO] Sync completed for {tracked_dir.path}")
+        except Exception as e:
+            await session.rollback()
+            print(f"[ERROR] Failed to process sync changes for {tracked_dir.path}: {e}")
+            raise
 
     async def _handle_deleted_files(
         self,
+        tracked_dir: TrackedDirectory,
         deleted_relative_paths: List[str],
         session: AsyncSession,
     ) -> None:
         """Handle deleted files - remove from database and Chroma."""
+        dir_path = Path(tracked_dir.path)
         for rel_path in deleted_relative_paths:
+            # Use absolute path for precise matching
+            abs_path = str(dir_path / rel_path)
+            
             result = await session.execute(
-                select(Image).where(Image.file_path.contains(rel_path))
+                select(Image).where(Image.file_path == abs_path)
             )
             images = result.scalars().all()
 
             for image in images:
                 try:
-                    self._vector_store.collection.delete(ids=[str(image.id)])
-                except Exception:
-                    pass
+                    if self._vector_store:
+                        self._vector_store.delete_by_ids(ids=[str(image.id)])
+                except Exception as e:
+                    print(f"[ERROR] Failed to delete from Chroma: {e}")
 
                 await session.delete(image)
-
-        await session.commit()
 
     async def _index_files(
         self,
@@ -346,12 +365,16 @@ class DirectorySyncService:
         if self._sync_task is not None and not self._sync_task.done():
             return
 
+        # Load persisted settings before starting the loop
+        await self.load_settings()
+
         self._ensure_stop_event().clear()
         self._sync_task = asyncio.create_task(self._sync_loop())
 
     async def stop_background_sync(self) -> None:
         """Stop background sync task."""
-        self._ensure_stop_event().set()
+        if self._stop_event:
+            self._stop_event.set()
         if self._sync_task:
             self._sync_task.cancel()
             try:
@@ -359,40 +382,78 @@ class DirectorySyncService:
             except asyncio.CancelledError:
                 pass
 
+    async def load_settings(self) -> None:
+        """Load sync settings from database."""
+        try:
+            from ..models.sql import Settings
+            async with AsyncSessionLocal() as session:
+                result = await session.execute(select(Settings).limit(1))
+                settings = result.scalar_one_or_none()
+                if settings:
+                    await self.update_settings(
+                        auto_reindex=settings.auto_reindex,
+                        sync_frequency=settings.sync_frequency
+                    )
+                    print(f"[DEBUG] Loaded background sync settings: enabled={settings.auto_reindex}, freq={settings.sync_frequency}")
+        except Exception as e:
+            print(f"[ERROR] Failed to load sync settings: {e}")
 
-    def _should_sync_directory(self, dir_info: dict) -> bool:
+    def _should_sync_directory_obj(self, tracked_dir: TrackedDirectory) -> bool:
         """Check if directory needs sync based on interval."""
-        if dir_info["last_synced_at"] is None:
+        if tracked_dir.last_synced_at is None:
             return True
 
-        last_synced = datetime.fromisoformat(dir_info["last_synced_at"])
-        next_sync = last_synced + timedelta(seconds=dir_info["sync_interval_seconds"])
+        # Use directory-specific interval if set, otherwise use global setting
+        interval = tracked_dir.sync_interval_seconds or self._sync_interval_seconds
+        
+        # Ensure last_synced_at has timezone info for comparison
+        last_synced = tracked_dir.last_synced_at
+        if last_synced.tzinfo is None:
+            last_synced = last_synced.replace(tzinfo=timezone.utc)
+            
+        next_sync = last_synced + timedelta(seconds=interval)
         return datetime.now(timezone.utc) >= next_sync
 
-    async def _sync_with_error_handling(self, dir_info: dict) -> None:
+    async def _sync_with_error_handling_obj(self, tracked_dir: TrackedDirectory) -> None:
         """Sync directory and handle any errors, updating job status."""
         job_id = self._ingestion_job_service.create_job_id()
         self._ingestion_job_service.init_job(job_id)
-        # Manually set path for job status
-        self._ingestion_job_service._active_jobs[job_id]["directory_path"] = dir_info["path"]
-        self._ingestion_job_service._active_jobs[job_id]["status"] = "processing"
+        if job_id in self._ingestion_job_service._active_jobs:
+            self._ingestion_job_service._active_jobs[job_id]["directory_path"] = tracked_dir.path
+            self._ingestion_job_service._active_jobs[job_id]["status"] = "processing"
 
         try:
-            print(f"[DEBUG] Starting sync job {job_id} for {dir_info['path']}")
-            await self.sync_directory(dir_info["id"], job_id=job_id)
+            strategy = get_sync_strategy(tracked_dir.sync_strategy)
             
-            self._ingestion_job_service._active_jobs[job_id]["status"] = "completed"
-            self._ingestion_job_service._active_jobs[job_id]["progress"] = 1.0
+            # Use a fresh session for the actual sync to avoid long-lived transaction issues
+            async with AsyncSessionLocal() as session:
+                # Re-fetch tracked_dir in this session
+                result = await session.execute(
+                    select(TrackedDirectory).where(TrackedDirectory.id == tracked_dir.id)
+                )
+                db_tracked_dir = result.scalar_one_or_none()
+                if not db_tracked_dir:
+                    return
+
+                sync_result = await strategy.sync(db_tracked_dir, session)
+                await self._process_sync_changes(db_tracked_dir, sync_result, session, job_id=job_id)
+                
+                # Success - mark in job service
+                if job_id in self._ingestion_job_service._active_jobs:
+                    self._ingestion_job_service._active_jobs[job_id]["status"] = "completed"
+                    self._ingestion_job_service._active_jobs[job_id]["progress"] = 1.0
         except Exception as e:
-            msg = f"Sync failed: {str(e)}"
-            self._ingestion_job_service._active_jobs[job_id]["status"] = "error"
-            self._ingestion_job_service._active_jobs[job_id]["errors"].append(msg)
+            msg = f"Sync failed for {tracked_dir.path}: {str(e)}"
+            print(f"[ERROR] {msg}")
+            if job_id in self._ingestion_job_service._active_jobs:
+                self._ingestion_job_service._active_jobs[job_id]["status"] = "error"
+                self._ingestion_job_service._active_jobs[job_id]["errors"].append(str(e))
             
             async with AsyncSessionLocal() as session:
                 result = await session.execute(
-                    select(TrackedDirectory).where(TrackedDirectory.id == dir_info["id"])
+                    select(TrackedDirectory).where(TrackedDirectory.id == tracked_dir.id)
                 )
-                tracked_dir = result.scalar_one_or_none()
-                if tracked_dir:
-                    tracked_dir.last_error = str(e)
+                db_dir = result.scalar_one_or_none()
+                if db_dir:
+                    db_dir.last_error = str(e)
                     await session.commit()

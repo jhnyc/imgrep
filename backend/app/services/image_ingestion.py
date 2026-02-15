@@ -183,6 +183,7 @@ async def process_directory_for_ingestion(
 
     # Save to database and Chroma
     await save_ingested_images(session, valid_thumbnails, valid_embeddings, vector_store)
+    await session.commit()
 
 
 async def save_ingested_images(
@@ -235,9 +236,7 @@ async def save_ingested_images(
             "file_path": str(img_path)
         })
 
-    await session.commit()
-
-    # Batch add to Chroma after commit
+    # Batch add to Chroma before commit (or after flush)
     if chroma_ids:
         vector_store.add_embeddings(
             ids=chroma_ids,

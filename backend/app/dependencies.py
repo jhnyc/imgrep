@@ -35,6 +35,27 @@ def get_vector_store_service() -> VectorStoreService:
     return _vector_store_service
 
 
+# IngestionJobService maintains active job state
+_ingestion_job_service: Optional[IngestionJobService] = None
+
+
+def get_ingestion_job_service_singleton() -> IngestionJobService:
+    """
+    Get the IngestionJobService singleton.
+
+    This service manages active ingestion jobs and must maintain state
+    across requests, so it uses a singleton pattern.
+
+    Returns:
+        IngestionJobService: The ingestion job service instance
+    """
+    global _ingestion_job_service
+    if _ingestion_job_service is None:
+        vector_store = get_vector_store_service()
+        _ingestion_job_service = IngestionJobService(vector_store=vector_store)
+    return _ingestion_job_service
+
+
 # DirectorySyncService maintains background task state
 _directory_sync_service: Optional[DirectorySyncService] = None
 
@@ -51,10 +72,12 @@ def get_directory_sync_service() -> DirectorySyncService:
     """
     global _directory_sync_service
     if _directory_sync_service is None:
-        # Initialize with vector_store service
+        # Initialize with vector_store and ingestion_job_service
         vector_store = get_vector_store_service()
+        ingestion_job_service = get_ingestion_job_service_singleton()
         _directory_sync_service = DirectorySyncService(
             vector_store=vector_store,
+            ingestion_job_service=ingestion_job_service,
         )
     return _directory_sync_service
 

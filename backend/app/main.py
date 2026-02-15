@@ -15,10 +15,13 @@ async def lifespan(app: FastAPI):
     # Startup
     await init_db()
     from .services.sync_service import sync_sqlite_to_chroma
-    await sync_sqlite_to_chroma()
+    from .dependencies import get_vector_store_service
+    vector_store = get_vector_store_service()
+    await sync_sqlite_to_chroma(vector_store)
 
     # Start background directory sync
-    from .services.directory_sync import directory_sync_service
+    from .dependencies import get_directory_sync_service
+    directory_sync_service = get_directory_sync_service()
     await directory_sync_service.start_background_sync()
 
     yield

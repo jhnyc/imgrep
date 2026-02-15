@@ -78,10 +78,6 @@ class SnapshotSyncStrategy(SyncStrategy):
             session, tracked_dir, added, modified, deleted, current_files
         )
 
-        tracked_dir.last_synced_at = datetime.now(timezone.utc)
-        tracked_dir.last_error = None
-        await session.commit()
-
         return SyncResult(
             tracked_directory_id=tracked_dir.id,
             added=[str(p) for p in added],
@@ -208,8 +204,6 @@ class SnapshotSyncStrategy(SyncStrategy):
                 DirectorySnapshot.tracked_directory_id == tracked_dir.id
             )
         )
-        await session.commit()
-
 
 class MerkleSyncStrategy(SyncStrategy):
     """
@@ -368,10 +362,6 @@ class MerkleSyncStrategy(SyncStrategy):
             added, deleted = await self._compare_trees(dir_path, existing_tree)
             await self._rebuild_tree(tracked_dir, dir_path, session)
 
-            tracked_dir.last_synced_at = datetime.now(timezone.utc)
-            tracked_dir.last_error = None
-            await session.commit()
-
             return SyncResult(
                 tracked_directory_id=tracked_dir.id,
                 added=[str(p) for p in added],
@@ -406,8 +396,6 @@ class MerkleSyncStrategy(SyncStrategy):
 
         for node_data in node_data_list:
             session.add(MerkleNode(**node_data))
-
-        await session.commit()
 
         added = [
             str(dir_path / n["relative_path"])
@@ -445,15 +433,12 @@ class MerkleSyncStrategy(SyncStrategy):
         for node_data in node_data_list:
             session.add(MerkleNode(**node_data))
 
-        await session.commit()
-
     async def cleanup(self, tracked_dir: TrackedDirectory, session: AsyncSession) -> None:
         await session.execute(
             delete(MerkleNode).where(
                 MerkleNode.tracked_directory_id == tracked_dir.id
             )
         )
-        await session.commit()
 
 
 def get_sync_strategy(strategy_name: str) -> SyncStrategy:

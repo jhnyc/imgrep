@@ -32,6 +32,16 @@ async def sync_sqlite_to_chroma(vector_store: "VectorStoreService"):
         to_add_ids = []
         to_add_embeddings = []
         to_add_metadatas = []
+        
+        # Check for orphans (in Chroma but not in SQLite)
+        sqlite_id_set = {str(img.id) for img in sqlite_images}
+        orphan_ids = [cid for cid in chroma_ids if cid not in sqlite_id_set]
+        
+        if orphan_ids:
+            print(f"Removing {len(orphan_ids)} orphan items from Chroma")
+            vector_store.delete_by_ids(orphan_ids)
+            # Update chroma_ids set after deletion
+            chroma_ids = chroma_ids - set(orphan_ids)
 
         for img in sqlite_images:
             if str(img.id) not in chroma_ids:

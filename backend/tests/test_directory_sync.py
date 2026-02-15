@@ -369,18 +369,7 @@ async def test_background_sync_skips_on_no_changes(db_session, tmp_path):
         await session.commit()
 
     # Mock the sync to track if it's called
-    with patch.object(service, "sync_directory", new_callable=AsyncMock) as mock_sync:
-        mock_sync.return_value = SyncResult(
-            tracked_directory_id=tracked_dir.id,
-            added=[],
-            modified=[],
-            deleted=[],
-            unchanged=0,
-            errors=[],
-            sync_duration_seconds=0.1,
-            strategy_used="snapshot",
-        )
-
+    with patch.object(service, "_sync_with_error_handling_obj", new_callable=AsyncMock) as mock_sync:
         # Start background sync
         await service.start_background_sync()
 
@@ -411,19 +400,10 @@ async def test_background_sync_with_interval_reached(test_db, tmp_path):
     )
 
     # Create a mock sync that completes quickly
-    async def mock_sync_func(directory_id):
-        return SyncResult(
-            tracked_directory_id=directory_id,
-            added=[],
-            modified=[],
-            deleted=[],
-            unchanged=0,
-            errors=[],
-            sync_duration_seconds=0.01,
-            strategy_used="snapshot",
-        )
+    async def mock_sync_func(tracked_dir):
+        pass
 
-    with patch.object(service, "sync_directory", new=mock_sync_func):
+    with patch.object(service, "_sync_with_error_handling_obj", new=mock_sync_func):
         # Start background sync
         await service.start_background_sync()
 
@@ -487,7 +467,7 @@ async def test_handle_deleted_files(db_session, tmp_path):
         )
 
         # Handle deletions
-        await service._handle_deleted_files(result.deleted, session)
+        await service._handle_deleted_files(tracked_dir, result.deleted, session)
 
         # Verify image is deleted
         from sqlalchemy import select
