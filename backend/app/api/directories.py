@@ -1,9 +1,14 @@
-from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File
+from typing import List
+
+from fastapi import APIRouter, HTTPException, BackgroundTasks, UploadFile, File, Depends
 import shutil
 from pathlib import Path
 
-from ..services.ingestion import directory_service
-from ..services.directory_sync import directory_sync_service
+from ..dependencies import (
+    get_ingestion_job_service,
+    get_directory_sync_service,
+    get_vector_store_service,
+)
 from ..core.config import THUMBNAILS_DIR, UPLOADS_DIR, ALLOWED_DIRECTORY_PREFIXES
 from ..schemas.directory import (
     AddDirectoryRequest,
@@ -19,9 +24,13 @@ router = APIRouter(prefix="/api/directories", tags=["directories"])
 
 
 @router.post("/add", response_model=dict)
-async def add_directory(request: AddDirectoryRequest, background_tasks: BackgroundTasks):
+async def add_directory(
+    request: AddDirectoryRequest,
+    background_tasks: BackgroundTasks,
+    ingestion_job_service= Depends(get_ingestion_job_service),
+):
     """Add a directory to process images from"""
-    job_id = directory_service.create_job_id()
+    job_id = ingestion_job_service.create_job_id()
 
     # Check if directory exists
     dir_path = Path(request.path).expanduser().resolve()
@@ -39,10 +48,10 @@ async def add_directory(request: AddDirectoryRequest, background_tasks: Backgrou
             )
 
     # Initialize job status
-    directory_service.init_job(job_id)
+    ingestion_job_service.init_job(job_id)
 
     # Start background job
-    background_tasks.add_task(directory_service.process_directory_job, str(dir_path), job_id, THUMBNAILS_DIR)
+    background_tasks.add_task(ingestion_job_service.process_directory_job, str(dir_path), job_id, THUMBNAILS_DIR)
 
     return {"job_id": job_id, "status": "pending"}
 
@@ -50,38 +59,42 @@ async def add_directory(request: AddDirectoryRequest, background_tasks: Backgrou
 @router.post("/upload", response_model=dict)
 async def upload_files(
     background_tasks: BackgroundTasks,
-    files: list[UploadFile] = File(...),
+    files: List[UploadFile] = File(...),
+    ingestion_job_service= Depends(get_ingestion_job_service),
 ):
     """Upload files to process"""
-    job_id = directory_service.create_job_id()
+    job_id = ingestion_job_service.create_job_id()
 
     # Create upload directory
     upload_dir = UPLOADS_DIR / job_id
     upload_dir.mkdir(parents=True, exist_ok=True)
-    
+
     saved_count = 0
     for file in files:
         if not file.filename:
             continue
-            
+
         dest_path = upload_dir / Path(file.filename).name
         with dest_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
         saved_count += 1
-    
+
     # Initialize job status
-    directory_service.init_job(job_id)
+    ingestion_job_service.init_job(job_id)
 
     # Start background job on the upload directory
-    background_tasks.add_task(directory_service.process_directory_job, str(upload_dir), job_id, THUMBNAILS_DIR)
-    
+    background_tasks.add_task(ingestion_job_service.process_directory_job, str(upload_dir), job_id, THUMBNAILS_DIR)
+
     return {"job_id": job_id, "status": "pending", "file_count": saved_count}
 
 
 @router.get("/job/{job_id}", response_model=JobStatusResponse)
-async def get_job_status(job_id: str):
+async def get_job_status(
+    job_id: str,
+    ingestion_job_service= Depends(get_ingestion_job_service),
+):
     """Get status of a directory processing job"""
-    status = directory_service.get_job_status(job_id)
+    status = ingestion_job_service.get_job_status(job_id)
     if not status:
         raise HTTPException(status_code=404, detail="Job not found")
 
@@ -92,16 +105,21 @@ async def get_job_status(job_id: str):
 
 
 @router.get("/jobs", response_model=JobListResponse)
-async def list_jobs():
+async def list_jobs(
+    ingestion_job_service= Depends(get_ingestion_job_service),
+):
     """List all jobs"""
-    jobs = directory_service.list_jobs()
+    jobs = ingestion_job_service.list_jobs()
     return JobListResponse(jobs=jobs)
 
 
 # ========== Tracked Directory Endpoints ==========
 
 @router.post("/tracked", response_model=TrackedDirectoryResponse)
-async def add_tracked_directory(request: AddTrackedDirectoryRequest):
+async def add_tracked_directory(
+    request: AddTrackedDirectoryRequest,
+    directory_sync_service= Depends(get_directory_sync_service),
+):
     """Add a directory to be continuously tracked and synced."""
     try:
         tracked_dir = await directory_sync_service.add_tracked_directory(
@@ -126,7 +144,9 @@ async def add_tracked_directory(request: AddTrackedDirectoryRequest):
 
 
 @router.get("/tracked", response_model=TrackedDirectoryListResponse)
-async def list_tracked_directories():
+async def list_tracked_directories(
+    directory_sync_service= Depends(get_directory_sync_service),
+):
     """List all tracked directories."""
     directories = await directory_sync_service.list_tracked_directories()
     return TrackedDirectoryListResponse(
@@ -135,7 +155,10 @@ async def list_tracked_directories():
 
 
 @router.get("/tracked/{directory_id}", response_model=TrackedDirectoryResponse)
-async def get_tracked_directory(directory_id: int):
+async def get_tracked_directory(
+    directory_id: int,
+    directory_sync_service= Depends(get_directory_sync_service),
+):
     """Get details of a tracked directory."""
     dir_info = await directory_sync_service.get_tracked_directory(directory_id)
     if not dir_info:
@@ -144,7 +167,10 @@ async def get_tracked_directory(directory_id: int):
 
 
 @router.delete("/tracked/{directory_id}")
-async def remove_tracked_directory(directory_id: int):
+async def remove_tracked_directory(
+    directory_id: int,
+    directory_sync_service= Depends(get_directory_sync_service),
+):
     """Remove a tracked directory."""
     removed = await directory_sync_service.remove_tracked_directory(directory_id)
     if not removed:
@@ -153,7 +179,10 @@ async def remove_tracked_directory(directory_id: int):
 
 
 @router.post("/tracked/{directory_id}/sync", response_model=SyncResultResponse)
-async def sync_tracked_directory(directory_id: int):
+async def sync_tracked_directory(
+    directory_id: int,
+    directory_sync_service= Depends(get_directory_sync_service),
+):
     """Manually trigger a sync for a tracked directory."""
     try:
         result = await directory_sync_service.sync_directory(directory_id)

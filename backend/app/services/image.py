@@ -1,9 +1,6 @@
-"""
-Image service - handles image scanning, hashing, thumbnail generation, and metadata extraction.
-"""
 import hashlib
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple, Optional
 from datetime import datetime
 from PIL import Image as PILImage
 import json
@@ -44,7 +41,7 @@ def compute_corpus_hash(image_ids: List[int]) -> str:
 def generate_thumbnail(
     file_path: Path,
     output_dir: Path = THUMBNAILS_DIR,
-    size: tuple[int, int] = None
+    size: Optional[Tuple[int, int]] = None
 ) -> str:
     """Generate thumbnail and return relative path"""
     if size is None:
@@ -95,11 +92,6 @@ def get_image_metadata(file_path: Path) -> Dict[str, Any]:
         metadata["error"] = str(e)
 
     return metadata
-
-
-def get_thumbnail_url(thumbnail_path: str) -> str:
-    """Get URL for thumbnail"""
-    return f"/api/thumbnails/{thumbnail_path}" if thumbnail_path else ""
 
 
 def is_image_path(file_path: Path) -> bool:

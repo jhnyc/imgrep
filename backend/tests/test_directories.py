@@ -4,15 +4,29 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from app.services.ingestion import directory_service
+from app.services.ingestion_job import IngestionJobService
+from app.services.vector_store import VectorStoreService
 
-# Helper to access _active_jobs for testing
-def get_active_jobs():
-    return directory_service._active_jobs
+
+# Create a mock vector store for tests
+@pytest.fixture
+def mock_vector_store():
+    """Mock vector store for testing"""
+    class MockVectorStore:
+        def add_embeddings(self, ids, embeddings, metadatas=None):
+            pass
+    return MockVectorStore()
+
+
+@pytest.fixture
+def ingestion_job_service(mock_vector_store):
+    """Create IngestionJobService instance for testing"""
+    service = IngestionJobService(vector_store=mock_vector_store)
+    return service
 
 
 @pytest.mark.asyncio
-async def test_process_directory_permission_error(test_db, tmp_path):
+async def test_process_directory_permission_error(test_db, tmp_path, ingestion_job_service):
     """Test that permission errors are properly exposed in job status."""
     # Create a directory and make it unreadable (on Unix-like systems)
     restricted_dir = tmp_path / "restricted"
@@ -26,16 +40,14 @@ async def test_process_directory_permission_error(test_db, tmp_path):
         thumbnail_dir = tmp_path / "thumbnails"
 
         # Initialize job
-        directory_service.init_job(job_id)
+        ingestion_job_service.init_job(job_id)
 
         # Run the job - it should handle the permission error gracefully
-        await directory_service.process_directory_job(str(restricted_dir), job_id, thumbnail_dir)
+        await ingestion_job_service.process_directory_job(str(restricted_dir), job_id, thumbnail_dir)
 
         # Check that the job status reflects the error
-        _active_jobs = get_active_jobs()
-        assert job_id in _active_jobs
-        job_status = _active_jobs[job_id]
-
+        job_status = ingestion_job_service.get_job_status(job_id)
+        assert job_status is not None
         assert job_status["status"] == "error"
         assert len(job_status["errors"]) > 0
         assert any("permission" in err.lower() for err in job_status["errors"])
@@ -49,7 +61,7 @@ async def test_process_directory_permission_error(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_process_directory_not_found(test_db, tmp_path):
+async def test_process_directory_not_found(test_db, tmp_path, ingestion_job_service):
     """Test that non-existent directory is handled properly."""
     nonexistent = tmp_path / "does_not_exist"
 
@@ -57,20 +69,19 @@ async def test_process_directory_not_found(test_db, tmp_path):
     thumbnail_dir = tmp_path / "thumbnails"
 
     # Initialize job
-    directory_service.init_job(job_id)
+    ingestion_job_service.init_job(job_id)
 
     # This should fail at the directory existence check
-    await directory_service.process_directory_job(str(nonexistent), job_id, thumbnail_dir)
+    await ingestion_job_service.process_directory_job(str(nonexistent), job_id, thumbnail_dir)
 
     # Job should have error status
-    _active_jobs = get_active_jobs()
-    assert job_id in _active_jobs
-    job_status = _active_jobs[job_id]
+    job_status = ingestion_job_service.get_job_status(job_id)
+    assert job_status is not None
     assert job_status["status"] == "error"
 
 
 @pytest.mark.asyncio
-async def test_process_directory_with_images(test_db, tmp_path):
+async def test_process_directory_with_images(test_db, tmp_path, ingestion_job_service):
     """Test successful processing of a directory with images."""
     from app.services.image import compute_file_hash
 
@@ -128,27 +139,19 @@ async def test_process_directory_with_images(test_db, tmp_path):
     thumbnail_dir = tmp_path / "thumbnails"
 
     # Initialize job
-    directory_service.init_job(job_id)
+    ingestion_job_service.init_job(job_id)
 
-    # Mock the embedding API, but patch in directory_service
-    with patch("app.services.ingestion.embed_images_with_progress", new_callable=AsyncMock) as mock_embed:
+    # Mock the embedding API - need to patch where it's imported
+    with patch("app.services.image_ingestion.embed_images_with_progress", new_callable=AsyncMock) as mock_embed:
         mock_embed.return_value = ([[0.1, 0.2], [0.3, 0.4]], [])
 
-        # Mock save_ingested_images too since we don't want to rely on real DB/Chroma in this uni test?
-        # Actually the test_db fixture sets up DB. But save_ingested_images calls Chroma too.
-        # We need to mock Chroma interactions if we don't want to require Chorma running.
-        # save_ingested_images imports chroma_manager.
-        
-        with patch("app.services.ingestion.chroma_manager") as mock_chroma, \
-             patch("app.services.ingestion.save_ingested_images", new_callable=AsyncMock) as mock_save:
-            
-            await directory_service.process_directory_job(str(images_dir), job_id, thumbnail_dir)
+        # Mock save_ingested_images too since we don't want to rely on real DB/Chroma
+        with patch("app.services.image_ingestion.save_ingested_images", new_callable=AsyncMock) as mock_save:
+            await ingestion_job_service.process_directory_job(str(images_dir), job_id, thumbnail_dir)
 
             # Check job completed successfully
-            _active_jobs = get_active_jobs()
-            assert job_id in _active_jobs
-            job_status = _active_jobs[job_id]
-
+            job_status = ingestion_job_service.get_job_status(job_id)
+            assert job_status is not None
             assert job_status["status"] == "completed"
             assert job_status["total"] == 2
             assert job_status["progress"] == 1.0
@@ -159,7 +162,7 @@ async def test_process_directory_with_images(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_process_directory_empty(test_db, tmp_path):
+async def test_process_directory_empty(test_db, tmp_path, ingestion_job_service):
     """Test processing an empty directory."""
     empty_dir = tmp_path / "empty"
     empty_dir.mkdir()
@@ -168,15 +171,13 @@ async def test_process_directory_empty(test_db, tmp_path):
     thumbnail_dir = tmp_path / "thumbnails"
 
     # Initialize job
-    directory_service.init_job(job_id)
+    ingestion_job_service.init_job(job_id)
 
-    await directory_service.process_directory_job(str(empty_dir), job_id, thumbnail_dir)
+    await ingestion_job_service.process_directory_job(str(empty_dir), job_id, thumbnail_dir)
 
     # Job should complete with 0 images
-    _active_jobs = get_active_jobs()
-    assert job_id in _active_jobs
-    job_status = _active_jobs[job_id]
-
+    job_status = ingestion_job_service.get_job_status(job_id)
+    assert job_status is not None
     assert job_status["status"] == "completed"
     assert job_status["total"] == 0
     assert job_status["processed"] == 0

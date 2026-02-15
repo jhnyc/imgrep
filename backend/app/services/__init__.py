@@ -7,12 +7,8 @@ from .clustering import (
 from .embedding import (
     embed_text_async,
     embed_image_bytes_async,
-    embed_images_batch_async,
     embed_images_with_progress,
     get_embedding_info,
-    get_backend,
-    is_jina_backend,
-    is_siglip_backend,
 )
 from .image import (
     scan_directory,
@@ -20,11 +16,14 @@ from .image import (
     compute_corpus_hash,
     generate_thumbnail,
     get_image_metadata,
-    get_thumbnail_url,
 )
-from .chroma import chroma_manager
-from .ingestion import directory_service, save_ingested_images
+from .image_service import ImageService
+from .search_service import SearchService
+from .ingestion_job import IngestionJobService
+from .image_ingestion import save_ingested_images
+from .sync_service import sync_sqlite_to_chroma
 
+# Export service classes for dependency injection
 __all__ = [
     # Clustering
     "create_strategy",
@@ -33,22 +32,20 @@ __all__ = [
     # Embedding
     "embed_text_async",
     "embed_image_bytes_async",
-    "embed_images_batch_async",
     "embed_images_with_progress",
     "get_embedding_info",
-    "get_backend",
-    "is_jina_backend",
-    "is_siglip_backend",
-    # Image
+    # Image utilities
     "scan_directory",
     "compute_file_hash",
     "compute_corpus_hash",
     "generate_thumbnail",
     "get_image_metadata",
-    "get_thumbnail_url",
-    # Chroma
-    "chroma_manager",
+    # Service classes (for dependency injection)
+    "ImageService",
+    "SearchService",
+    "IngestionJobService",
     # Ingestion
-    "directory_service",
     "save_ingested_images",
+    # Sync
+    "sync_sqlite_to_chroma",
 ]

@@ -1,10 +1,6 @@
-"""
-Clustering service - combines strategy classes, utility functions,
-and orchestration functions for clustering images.
-"""
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Dict
+from typing import Any, Optional, Dict, List
 import numpy as np
 import umap
 from sklearn.cluster import DBSCAN, KMeans
@@ -324,7 +320,7 @@ def normalize_coordinates(coordinates: np.ndarray, canvas_size: float = None) ->
 def compute_cluster_centers(
     coordinates: np.ndarray,
     labels: np.ndarray
-) -> dict[int, dict]:
+) -> Dict[int, dict]:
     """
     Compute cluster centers for visualization.
     Returns: {cluster_label: {"x": float, "y": float, "count": int}}

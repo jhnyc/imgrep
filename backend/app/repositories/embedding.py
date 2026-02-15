@@ -1,6 +1,3 @@
-"""
-Embedding repository - provides a clean interface for embedding database operations.
-"""
 import json
 from typing import Dict, List
 

@@ -1,10 +1,23 @@
-import json
+"""
+Database connection and session management.
+
+This module provides database connectivity and session management.
+
+TODO: Move the helper functions below to appropriate repositories:
+- get_image_by_hash -> ImageRepository.get_by_hash (already exists)
+- get_all_image_ids -> ImageRepository.get_all_ids (already exists)
+- get_all_embeddings -> should be in EmbeddingRepository or ClusteringRunRepository
+- get_current_clustering_run -> ClusteringRunRepository.get_current_run (exists)
+- get_all_clustering_runs_for_corpus -> ClusteringRunRepository.get_all_for_corpus (exists)
+- set_current_clustering_run -> ClusteringRunRepository.set_as_current (exists)
+"""
 from pathlib import Path
 from typing import Optional, List, Dict
-from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy import select
 
-from ..models.sql import Base, Image, Embedding, ClusteringRun, ClusterAssignment, ClusterMetadata
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
+from sqlalchemy import select, update
+
+from ..models.sql import Base, Image, Embedding, ClusteringRun
 from .config import DATABASE_URL
 
 engine = create_async_engine(
@@ -32,25 +45,42 @@ async def get_session() -> AsyncSession:
         yield session
 
 
-# Helper functions
+# ============================================================================
+# Helper functions - TODO: Move to appropriate repositories
+# These are kept for backward compatibility during refactoring
+# ============================================================================
+
 async def get_image_by_hash(file_hash: str) -> Optional[Image]:
-    """Get image by file hash"""
+    """
+    Get image by file hash.
+
+    TODO: Use ImageRepository.get_by_hash instead
+    """
+    from ..repositories.image import ImageRepository
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(Image).where(Image.file_hash == file_hash)
-        )
-        return result.scalar_one_or_none()
+        repo = ImageRepository(session)
+        return await repo.get_by_hash(file_hash)
 
 
 async def get_all_image_ids() -> List[int]:
-    """Get all image IDs for corpus hash computation"""
+    """
+    Get all image IDs for corpus hash computation.
+
+    TODO: Use ImageRepository.get_all_ids instead
+    """
+    from ..repositories.image import ImageRepository
     async with AsyncSessionLocal() as session:
-        result = await session.execute(select(Image.id).order_by(Image.id))
-        return [row[0] for row in result.all()]
+        repo = ImageRepository(session)
+        return await repo.get_all_ids()
 
 
 async def get_all_embeddings() -> Dict[int, List[float]]:
-    """Get all image embeddings as {image_id: embedding_vector}"""
+    """
+    Get all image embeddings as {image_id: embedding_vector}.
+
+    TODO: Move to EmbeddingRepository
+    """
+    import json
     async with AsyncSessionLocal() as session:
         result = await session.execute(
             select(Image.id, Embedding.vector)
@@ -63,49 +93,50 @@ async def get_all_embeddings() -> Dict[int, List[float]]:
         }
 
 
-async def get_current_clustering_run(strategy: str, projection_strategy: str, overlap_strategy: str, corpus_hash: str) -> Optional[ClusteringRun]:
-    """Get current clustering run for strategy, projection and overlap if corpus matches"""
+async def get_current_clustering_run(
+    strategy: str,
+    projection_strategy: str,
+    overlap_strategy: str,
+    corpus_hash: str
+) -> Optional[ClusteringRun]:
+    """
+    Get current clustering run for strategy, projection and overlap if corpus matches.
+
+    TODO: Use ClusteringRunRepository.get_current_run instead
+    """
+    from ..repositories.clustering_run import ClusteringRunRepository
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(ClusteringRun)
-            .where(
-                ClusteringRun.strategy == strategy,
-                ClusteringRun.projection_strategy == projection_strategy,
-                ClusteringRun.overlap_strategy == overlap_strategy,
-                ClusteringRun.image_corpus_hash == corpus_hash,
-                ClusteringRun.is_current == True
-            )
+        repo = ClusteringRunRepository(session)
+        return await repo.get_current_run(
+            strategy, projection_strategy, overlap_strategy, corpus_hash
         )
-        return result.scalar_one_or_none()
 
 
 async def get_all_clustering_runs_for_corpus(corpus_hash: str) -> List[ClusteringRun]:
-    """Get all clustering runs for a specific corpus hash"""
+    """
+    Get all clustering runs for a specific corpus hash.
+
+    TODO: Use ClusteringRunRepository.get_all_for_corpus instead
+    """
+    from ..repositories.clustering_run import ClusteringRunRepository
     async with AsyncSessionLocal() as session:
-        result = await session.execute(
-            select(ClusteringRun)
-            .where(ClusteringRun.image_corpus_hash == corpus_hash)
-        )
-        return list(result.scalars().all())
+        repo = ClusteringRunRepository(session)
+        return await repo.get_all_for_corpus(corpus_hash)
 
 
-async def set_current_clustering_run(run_id: int, strategy: str, projection_strategy: str, overlap_strategy: str):
-    """Set a clustering run as current, unsetting others for same strategy/projection/overlap"""
+async def set_current_clustering_run(
+    run_id: int,
+    strategy: str,
+    projection_strategy: str,
+    overlap_strategy: str
+):
+    """
+    Set a clustering run as current, unsetting others for same strategy/projection/overlap.
+
+    TODO: Use ClusteringRunRepository.set_as_current instead
+    """
+    from ..repositories.clustering_run import ClusteringRunRepository
     async with AsyncSessionLocal() as session:
-        # Unset previous current runs for the same strategy, projection and overlap
-        from sqlalchemy import update
-        await session.execute(
-            update(ClusteringRun)
-            .where(
-                ClusteringRun.strategy == strategy,
-                ClusteringRun.projection_strategy == projection_strategy,
-                ClusteringRun.overlap_strategy == overlap_strategy
-            )
-            .values(is_current=False)
-        )
-        await session.execute(
-            update(ClusteringRun)
-            .where(ClusteringRun.id == run_id)
-            .values(is_current=True)
-        )
+        repo = ClusteringRunRepository(session)
+        await repo.set_as_current(run_id, strategy, projection_strategy, overlap_strategy)
         await session.commit()

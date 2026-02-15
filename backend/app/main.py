@@ -52,6 +52,8 @@ app.include_router(clusters.router)
 app.include_router(images.router)
 app.include_router(search.router)
 app.include_router(embeddings.router)
+from .api import settings
+app.include_router(settings.router)
 
 
 @app.get("/")

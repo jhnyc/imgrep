@@ -1,7 +1,3 @@
-"""
-Embedding service - uses local SigLIP model for embeddings.
-No API key required.
-"""
 import asyncio
 from functools import lru_cache
 from typing import List, Tuple
@@ -168,18 +164,3 @@ async def get_embedding_info() -> dict:
         "embedding_dim": embedder.embedding_dim,
         "type": "local",
     }
-
-
-def get_backend() -> str:
-    """Get the embedding backend (always siglip now)"""
-    return "siglip"
-
-
-def is_jina_backend() -> bool:
-    """Check if using Jina API backend (always False now)"""
-    return False
-
-
-def is_siglip_backend() -> bool:
-    """Check if using SigLIP local backend (always True now)"""
-    return True

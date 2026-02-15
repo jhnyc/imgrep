@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List
 
 from sqlalchemy import (
     Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text, func,
@@ -19,7 +19,7 @@ class Embedding(Base):
     model_name: Mapped[str] = mapped_column(String(100))
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    images: Mapped[list["Image"]] = relationship(back_populates="embedding")
+    images: Mapped[List["Image"]] = relationship(back_populates="embedding")
 
 
 class Image(Base):
@@ -50,10 +50,10 @@ class ClusteringRun(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
     is_current: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
 
-    assignments: Mapped[list["ClusterAssignment"]] = relationship(
+    assignments: Mapped[List["ClusterAssignment"]] = relationship(
         back_populates="clustering_run", cascade="all, delete-orphan"
     )
-    cluster_metadata_list: Mapped[list["ClusterMetadata"]] = relationship(
+    cluster_metadata_list: Mapped[List["ClusterMetadata"]] = relationship(
         back_populates="clustering_run", cascade="all, delete-orphan"
     )
 
@@ -96,10 +96,10 @@ class TrackedDirectory(Base):
     sync_interval_seconds: Mapped[int] = mapped_column(Integer, default=300)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    snapshots: Mapped[list["DirectorySnapshot"]] = relationship(
+    snapshots: Mapped[List["DirectorySnapshot"]] = relationship(
         back_populates="tracked_directory", cascade="all, delete-orphan"
     )
-    merkle_nodes: Mapped[list["MerkleNode"]] = relationship(
+    merkle_nodes: Mapped[List["MerkleNode"]] = relationship(
         foreign_keys="MerkleNode.tracked_directory_id", cascade="all, delete-orphan"
     )
 
@@ -138,7 +138,7 @@ class MerkleNode(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     tracked_directory: Mapped["TrackedDirectory"] = relationship(back_populates="merkle_nodes")
-    children: Mapped[list["MerkleNode"]] = relationship(
+    children: Mapped[List["MerkleNode"]] = relationship(
         back_populates="parent",
         remote_side="MerkleNode.id"
     )
@@ -146,3 +146,23 @@ class MerkleNode(Base):
         back_populates="children",
         remote_side="MerkleNode.parent_id"
     )
+
+class Settings(Base):
+    __tablename__ = "settings"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    embedding_model: Mapped[str] = mapped_column(String(50), default="jina-clip-v2")
+    batch_size: Mapped[int] = mapped_column(Integer, default=12)
+    # Storing list as comma-separated string for simplicity in SQLite
+    image_extensions_csv: Mapped[str] = mapped_column(String(255), default="jpg,jpeg,png")
+    auto_reindex: Mapped[bool] = mapped_column(Boolean, default=True)
+    sync_frequency: Mapped[str] = mapped_column(String(10), default="1h")
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    @property
+    def image_extensions(self):
+        return self.image_extensions_csv.split(",") if self.image_extensions_csv else []
+
+    @image_extensions.setter
+    def image_extensions(self, value):
+        self.image_extensions_csv = ",".join(value) if value else ""

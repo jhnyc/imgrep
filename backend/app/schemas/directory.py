@@ -9,6 +9,7 @@ class JobStatus(BaseModel):
     total: int
     processed: int
     errors: List[str]
+    directory_path: Optional[str] = None
 
 
 class JobStatusResponse(JobStatus):
@@ -23,6 +24,7 @@ class JobListItem(BaseModel):
     total: int
     processed: int
     errors: List[str]
+    directory_path: Optional[str] = None
 
 
 class JobListResponse(BaseModel):
@@ -45,6 +47,7 @@ class TrackedDirectoryResponse(BaseModel):
     last_error: Optional[str]
     sync_interval_seconds: int
     created_at: str
+    file_count: Optional[int] = None
 
 
 class TrackedDirectoryListResponse(BaseModel):

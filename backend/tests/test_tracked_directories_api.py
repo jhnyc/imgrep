@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from app.models.sql import TrackedDirectory
-from app.services.directory_sync import directory_sync_service
+from app.services.directory_sync import DirectorySyncService
 
 
 # Minimal valid JPEG bytes

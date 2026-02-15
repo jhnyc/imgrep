@@ -20,7 +20,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import { FolderPlus, Globe, HardDrive, Layers, Loader2, Settings, Sliders } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { ToolbarButton } from "./ToolbarButton";
 
 interface SettingsDialogProps {
@@ -67,6 +67,8 @@ export function SettingsDialog({
     const [embeddingModel, setEmbeddingModel] = useState("jina-clip-v2");
     const [batchSize, setBatchSize] = useState(12);
     const [selectedExtensions, setSelectedExtensions] = useState<string[]>(["jpg", "jpeg", "png", "webp"]);
+    const [autoReindex, setAutoReindex] = useState(true);
+    const [syncFrequency, setSyncFrequency] = useState("1h");
 
     // Fetch tracked directories
     const { data: directoriesData, refetch: refetchDirs } = useQuery({
@@ -74,6 +76,55 @@ export function SettingsDialog({
         queryFn: () => api.listTrackedDirectories(),
         enabled: open,
     });
+
+    // Fetch global settings
+    const { data: settingsData, refetch: refetchSettings } = useQuery({
+        queryKey: ['settings'],
+        queryFn: async () => {
+            const res = await fetch('http://localhost:8001/api/settings');
+            if (!res.ok) throw new Error("Failed to fetch settings");
+            return res.json();
+        },
+        enabled: open,
+    });
+
+    // Sync local state with fetched settings
+    useEffect(() => {
+        if (settingsData) {
+            setEmbeddingModel(settingsData.embedding_model);
+            setBatchSize(settingsData.batch_size);
+            setSelectedExtensions(settingsData.image_extensions);
+            setAutoReindex(settingsData.auto_reindex);
+            setSyncFrequency(settingsData.sync_frequency);
+        }
+    }, [settingsData]);
+
+    const updateSettings = async (updates: any) => {
+        try {
+            await fetch('http://localhost:8001/api/settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    embedding_model: embeddingModel,
+                    batch_size: batchSize,
+                    image_extensions: selectedExtensions,
+                    auto_reindex: autoReindex,
+                    sync_frequency: syncFrequency,
+                    ...updates
+                })
+            });
+            refetchSettings();
+        } catch (e) {
+            console.error(e);
+        }
+    };
+
+    // Update handlers wrapper
+    const handleEmbeddingChange = (v: string) => { setEmbeddingModel(v); updateSettings({ embedding_model: v }); };
+    const handleBatchSizeChange = (v: number) => { setBatchSize(v); updateSettings({ batch_size: v }); };
+    const handleExtensionsChange = (v: string[]) => { setSelectedExtensions(v); updateSettings({ image_extensions: v }); };
+    const handleAutoReindexChange = (v: boolean) => { setAutoReindex(v); updateSettings({ auto_reindex: v }); };
+    const handleSyncFrequencyChange = (v: string) => { setSyncFrequency(v); updateSettings({ sync_frequency: v }); };
 
     // Fetch active jobs
     const { data: jobsData } = useQuery({
@@ -87,13 +138,27 @@ export function SettingsDialog({
         if (!newDirPath.trim()) return;
         setIsAddingDir(true);
         try {
-            await onAddDirectory(newDirPath.trim());
+            let seconds = 3600;
+            if (syncFrequency.endsWith('m')) seconds = parseInt(syncFrequency) * 60;
+            else if (syncFrequency.endsWith('h')) seconds = parseInt(syncFrequency) * 3600;
+            else if (syncFrequency.endsWith('d')) seconds = parseInt(syncFrequency) * 86400;
+
+            await api.addTrackedDirectory(newDirPath.trim(), 'snapshot', seconds);
             setNewDirPath("");
-            setTimeout(refetchDirs, 1000);
+            refetchDirs();
         } catch (error) {
             console.error(error);
         } finally {
             setIsAddingDir(false);
+        }
+    };
+
+    const handleRemoveDirectory = async (id: number) => {
+        try {
+            await api.removeTrackedDirectory(id);
+            refetchDirs();
+        } catch (error) {
+            console.error(error);
         }
     };
 
@@ -152,6 +217,15 @@ export function SettingsDialog({
                                 <h1 className="text-[20px] font-bold text-gray-900">
                                     {sidebarItems.find(i => i.id === activeTab)?.label}
                                 </h1>
+                                {activeJobs.length > 0 && totalImages > 0 && (
+                                    <div className="mt-4 space-y-2">
+                                        <div className="flex justify-between text-[12px] font-medium text-gray-500">
+                                            <span>Processing {totalImages.toLocaleString()} images...</span>
+                                            <span>{Math.round(overallProgress)}%</span>
+                                        </div>
+                                        <Progress value={overallProgress} className="h-1.5" />
+                                    </div>
+                                )}
                             </div>
 
                             <ScrollArea className="flex-1 px-10 pb-10">
@@ -185,7 +259,12 @@ export function SettingsDialog({
 
                                                 <div className="divide-y divide-gray-100 border-t border-gray-100">
                                                     {directoriesData?.directories.map((dir) => (
-                                                        <DirectoryItem key={dir.id} directory={dir} job={activeJobs[0]} />
+                                                        <DirectoryItem
+                                                            key={dir.id}
+                                                            directory={dir}
+                                                            job={activeJobs.find(j => j.directory_path === dir.path)}
+                                                            onRemove={handleRemoveDirectory}
+                                                        />
                                                     ))}
                                                     {directoriesData?.directories.length === 0 && (
                                                         <div className="py-10 text-center text-gray-400 text-[13px]">
@@ -194,22 +273,6 @@ export function SettingsDialog({
                                                     )}
                                                 </div>
                                             </div>
-
-                                            {/* Overall Process - Only visible when jobs are running */}
-                                            {activeJobs.length > 0 && (
-                                                <div className="space-y-4 pt-6 border-t border-gray-100">
-                                                    <div className="flex justify-between items-end">
-                                                        <div className="space-y-1">
-                                                            <h2 className="text-[16px] font-semibold text-gray-900">Active Processing</h2>
-                                                            <p className="text-[13px] text-gray-500">
-                                                                Overall progress: {totalProcessed.toLocaleString()} of {totalImages.toLocaleString()} images
-                                                            </p>
-                                                        </div>
-                                                        <span className="text-[14px] font-bold text-blue-600">{Math.round(overallProgress)}%</span>
-                                                    </div>
-                                                    <Progress value={overallProgress} className="h-2 bg-gray-100 border-0" />
-                                                </div>
-                                            )}
                                         </div>
                                     )}
 
@@ -221,7 +284,7 @@ export function SettingsDialog({
                                                     <h2 className="text-[14px] font-medium text-gray-900">Inference Engine</h2>
                                                     <p className="text-[13px] text-gray-500 leading-relaxed">Select the computer vision model used for semantic search and feature extraction.</p>
                                                 </div>
-                                                <Select value={embeddingModel} onValueChange={setEmbeddingModel}>
+                                                <Select value={embeddingModel} onValueChange={handleEmbeddingChange}>
                                                     <SelectTrigger className="w-[180px] h-8 text-[13px] bg-white border-gray-300 rounded focus:ring-0 shadow-sm">
                                                         <SelectValue placeholder="Select model" />
                                                     </SelectTrigger>
@@ -245,7 +308,7 @@ export function SettingsDialog({
                                                 <div className="px-2">
                                                     <Slider
                                                         value={[batchSize]}
-                                                        onValueChange={(v) => setBatchSize(v[0])}
+                                                        onValueChange={(v) => handleBatchSizeChange(v[0])}
                                                         max={64}
                                                         min={1}
                                                         step={1}
@@ -263,7 +326,7 @@ export function SettingsDialog({
                                                 <ToggleGroup
                                                     type="multiple"
                                                     value={selectedExtensions}
-                                                    onValueChange={setSelectedExtensions}
+                                                    onValueChange={handleExtensionsChange}
                                                     className="justify-start flex-wrap gap-2"
                                                 >
                                                     {IMAGE_EXTENSIONS_LIST.map((ext) => (
@@ -276,6 +339,41 @@ export function SettingsDialog({
                                                         </ToggleGroupItem>
                                                     ))}
                                                 </ToggleGroup>
+                                            </div>
+
+                                            {/* Automatic Re-indexing */}
+                                            <div className="space-y-6 pt-8 border-t border-gray-100">
+                                                <div className="flex items-center justify-between">
+                                                    <div className="space-y-1">
+                                                        <h2 className="text-[14px] font-medium text-gray-900">Automatic re-indexing</h2>
+                                                        <p className="text-[13px] text-gray-500">Enable background synchronization for connected folders.</p>
+                                                    </div>
+                                                    <Switch
+                                                        checked={autoReindex}
+                                                        onCheckedChange={handleAutoReindexChange}
+                                                        className="data-[state=checked]:bg-[#2577D8]"
+                                                    />
+                                                </div>
+
+                                                {autoReindex && (
+                                                    <div className="flex items-center justify-between">
+                                                        <div className="space-y-1">
+                                                            <h2 className="text-[14px] font-medium text-gray-900">Sync frequency</h2>
+                                                            <p className="text-[13px] text-gray-500">How often the backend checks for file changes.</p>
+                                                        </div>
+                                                        <Select value={syncFrequency} onValueChange={handleSyncFrequencyChange}>
+                                                            <SelectTrigger className="w-[140px] h-8 text-[13px] bg-white border-gray-300 rounded focus:ring-0 shadow-sm">
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent className="bg-white border-gray-200 shadow-xl z-[100] min-w-[160px] rounded-lg">
+                                                                <SelectItem value="15m" className="py-2 text-[13px] focus:bg-gray-100">Every 15 mins</SelectItem>
+                                                                <SelectItem value="1h" className="py-2 text-[13px] focus:bg-gray-100">Every hour</SelectItem>
+                                                                <SelectItem value="6h" className="py-2 text-[13px] focus:bg-gray-100">Every 6 hours</SelectItem>
+                                                                <SelectItem value="24h" className="py-2 text-[13px] focus:bg-gray-100">Daily</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     )}
@@ -412,7 +510,7 @@ export function SettingsDialog({
     );
 }
 
-function DirectoryItem({ directory, job }: { directory: TrackedDirectory, job?: JobStatus }) {
+function DirectoryItem({ directory, job, onRemove }: { directory: TrackedDirectory, job?: JobStatus, onRemove: (id: number) => void }) {
     const isProcessing = job && job.status === 'processing';
     const progress = job ? (job.processed / job.total) * 100 : 100;
 
@@ -431,7 +529,9 @@ function DirectoryItem({ directory, job }: { directory: TrackedDirectory, job?: 
                         <div className="text-[12px] text-gray-500 mt-0.5 flex items-center gap-2">
                             <span className="capitalize">{directory.sync_strategy} sync</span>
                             <span>•</span>
-                            <span>{directory.last_synced_at ? 'Recently synced' : 'Last synced: Never'}</span>
+                            <span>{directory.file_count ? `${directory.file_count} files` : '0 files'}</span>
+                            <span>•</span>
+                            <span>{directory.last_synced_at ? `Last synced: ${new Date(directory.last_synced_at).toLocaleString()}` : 'Last synced: Never'}</span>
                         </div>
                     </div>
                 </div>
@@ -443,7 +543,12 @@ function DirectoryItem({ directory, job }: { directory: TrackedDirectory, job?: 
                         <Loader2 size={14} className="animate-spin text-blue-500" />
                     </div>
                 ) : (
-                    <Button variant="ghost" size="sm" className="h-7 text-gray-400 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all font-medium text-[12px]"
+                        onClick={() => onRemove(directory.id)}
+                    >
                         Disconnect
                     </Button>
                 )}

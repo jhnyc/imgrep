@@ -1,7 +1,4 @@
-"""
-Cluster repository - provides a clean interface for clustering database operations.
-"""
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from sqlalchemy import select
 
@@ -19,6 +16,8 @@ class ClusterRepository:
     async def get_current_run(
         self,
         strategy: str,
+        projection_strategy: str,
+        overlap_strategy: str,
         corpus_hash: str
     ) -> Optional[ClusteringRun]:
         """
@@ -26,6 +25,8 @@ class ClusterRepository:
 
         Args:
             strategy: The clustering strategy name
+            projection_strategy: The projection strategy name
+            overlap_strategy: The overlap strategy name
             corpus_hash: Hash of the current image corpus
 
         Returns:
@@ -34,6 +35,8 @@ class ClusterRepository:
         result = await self.session.execute(
             select(ClusteringRun).where(
                 ClusteringRun.strategy == strategy,
+                ClusteringRun.projection_strategy == projection_strategy,
+                ClusteringRun.overlap_strategy == overlap_strategy,
                 ClusteringRun.image_corpus_hash == corpus_hash,
                 ClusteringRun.is_current == True
             )
@@ -70,7 +73,7 @@ class ClusterRepository:
     async def get_assignments_with_images(
         self,
         run_id: int
-    ) -> List[tuple[ClusterAssignment, "Image"]]:
+    ) -> List[Tuple[ClusterAssignment, "Image"]]:
         """
         Get cluster assignments with their associated images.
 
@@ -112,7 +115,9 @@ class ClusterRepository:
     async def set_current(
         self,
         run_id: int,
-        strategy: str
+        strategy: str,
+        projection_strategy: str = "umap",
+        overlap_strategy: str = "none"
     ) -> None:
         """
         Set a clustering run as current, unsetting others for the same strategy.
@@ -120,13 +125,19 @@ class ClusterRepository:
         Args:
             run_id: The clustering run ID to set as current
             strategy: The strategy name
+            projection_strategy: The projection strategy name
+            overlap_strategy: The overlap strategy name
         """
         from sqlalchemy import update
 
         # Unset previous current runs for this strategy
         await self.session.execute(
             update(ClusteringRun)
-            .where(ClusteringRun.strategy == strategy)
+            .where(
+                ClusteringRun.strategy == strategy,
+                ClusteringRun.projection_strategy == projection_strategy,
+                ClusteringRun.overlap_strategy == overlap_strategy
+            )
             .values(is_current=False)
         )
 
@@ -136,5 +147,3 @@ class ClusterRepository:
             .where(ClusteringRun.id == run_id)
             .values(is_current=True)
         )
-
-        await self.session.commit()

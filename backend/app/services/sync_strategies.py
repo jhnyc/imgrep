@@ -1,14 +1,10 @@
-"""
-Sync strategies for directory synchronization.
-Uses the Strategy pattern to allow different sync algorithms.
-"""
 import hashlib
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -126,7 +122,7 @@ class SnapshotSyncStrategy(SyncStrategy):
         self,
         current_files: Dict[str, dict],
         existing_snapshots: Dict[str, DirectorySnapshot],
-    ) -> tuple[list[Path], list[Path], int, list[str]]:
+    ) -> Tuple[List[Path], List[Path], int, List[str]]:
         added = []
         modified = []
         unchanged = 0
@@ -156,9 +152,9 @@ class SnapshotSyncStrategy(SyncStrategy):
         self,
         session: AsyncSession,
         tracked_dir: TrackedDirectory,
-        added: list[Path],
-        modified: list[Path],
-        deleted: list[str],
+        added: List[Path],
+        modified: List[Path],
+        deleted: List[str],
         current_files: Dict[str, dict],
     ) -> None:
         dir_path = Path(tracked_dir.path).expanduser().resolve()
@@ -243,7 +239,7 @@ class MerkleSyncStrategy(SyncStrategy):
         relative_path: str = "",
         tracked_dir_id: int = 0,
         parent_id: Optional[int] = None,
-    ) -> tuple[str, list[dict]]:
+    ) -> Tuple[str, List[Dict]]:
         node_data_list = []
         child_hashes = []
 
@@ -309,7 +305,7 @@ class MerkleSyncStrategy(SyncStrategy):
         self,
         dir_path: Path,
         existing_tree: Dict[str, MerkleNode],
-    ) -> tuple[list[Path], list[str]]:
+    ) -> Tuple[List[Path], List[str]]:
         added = []
         deleted = []
 

@@ -1,16 +1,14 @@
-"""
-Chroma service - handles vector database operations using ChromaDB.
-"""
 import chromadb
 from chromadb.config import Settings
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-import numpy as np
 
 from ..core.config import CHROMA_DATA_PATH, CHROMA_COLLECTION_NAME
 
 
-class ChromaManager:
+class VectorStoreService:
+    """Service for managing vector embeddings using ChromaDB"""
+
     def __init__(self):
         self.client = chromadb.PersistentClient(
             path=str(CHROMA_DATA_PATH),
@@ -60,6 +58,7 @@ class ChromaManager:
             for id_, emb in zip(results["ids"], results["embeddings"])
         }
 
+    def count(self) -> int:
+        """Get total number of embeddings in the collection"""
+        return self.collection.count()
 
-# Global instance
-chroma_manager = ChromaManager()

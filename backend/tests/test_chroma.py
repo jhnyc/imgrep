@@ -2,42 +2,7 @@ import pytest
 import numpy as np
 import json
 from pathlib import Path
-from app.services.chroma import ChromaManager
-from app.core.config import CHROMA_DATA_PATH
-import shutil
-import os
-
-@pytest.fixture
-def chroma_test_manager():
-    """Create a temporary Chroma instance for testing"""
-    test_path = CHROMA_DATA_PATH.parent / "chroma_test"
-    if test_path.exists():
-        shutil.rmtree(test_path)
-    
-    # We need to monkeypatch or just create a new manager with this path
-    manager = ChromaManager()
-    # For testing, we'll use a different collection name
-    test_collection_name = "test_images"
-    
-    # Clean up if collection exists
-    try:
-        manager.client.delete_collection(test_collection_name)
-    except:
-        pass
-        
-    collection = manager.client.get_or_create_collection(
-        name=test_collection_name,
-        metadata={"hnsw:space": "cosine"}
-    )
-    manager.collection = collection
-    
-    yield manager
-    
-    # Cleanup
-    try:
-        manager.client.delete_collection(test_collection_name)
-    except:
-        pass
+from app.services.vector_store import VectorStoreService
 
 def test_chroma_add_and_search(chroma_test_manager):
     """Test basic add and search functionality"""
@@ -81,25 +46,21 @@ def test_chroma_delete(chroma_test_manager):
 @pytest.mark.asyncio
 async def test_search_integration(client, test_db, chroma_test_manager, monkeypatch):
     """Test search API integration with Chroma and SQLite"""
-    from app.api.search import chroma_manager
     from app.core.database import AsyncSessionLocal
     from app.models.sql import Image, Embedding
-    
-    # Mock chroma_manager in the search module
-    monkeypatch.setattr("app.api.search.chroma_manager", chroma_test_manager)
-    
+
     # 1. Add data to SQLite
     async with AsyncSessionLocal() as session:
         emb1 = Embedding(vector=json.dumps([1.0, 0.0, 0.0]), model_name="test")
         emb2 = Embedding(vector=json.dumps([0.0, 1.0, 0.0]), model_name="test")
         session.add_all([emb1, emb2])
         await session.flush()
-        
+
         img1 = Image(file_hash="h1", file_path="p1", embedding_id=emb1.id, thumbnail_path="t1.jpg")
         img2 = Image(file_hash="h2", file_path="p2", embedding_id=emb2.id, thumbnail_path="t2.jpg")
         session.add_all([img1, img2])
         await session.commit()
-        
+
         img1_id = img1.id
         img2_id = img2.id
 
@@ -117,7 +78,7 @@ async def test_search_integration(client, test_db, chroma_test_manager, monkeypa
 
     # 4. Perform search
     response = await client.post("/api/search/text", json={"query": "test", "top_k": 5})
-    
+
     assert response.status_code == 200
     data = response.json()
     assert data["total"] == 2

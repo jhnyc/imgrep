@@ -1,6 +1,3 @@
-"""
-Image repository - provides a clean interface for image database operations.
-"""
 from typing import Optional, List, Tuple, Dict
 
 from sqlalchemy import select, func

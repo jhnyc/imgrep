@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from ..services.embedding import get_embedding_info, get_backend
+from ..services.embedding import get_embedding_info
 
 router = APIRouter(prefix="/api/embeddings", tags=["embeddings"])
 
@@ -14,8 +14,7 @@ async def get_embeddings_info():
 @router.get("/backend")
 async def get_current_backend():
     """Get the current embedding backend name"""
-    backend = get_backend()
     return {
-        "backend": backend,
-        "type": "local" if backend == "siglip" else "api",
+        "backend": "siglip",
+        "type": "local",
     }

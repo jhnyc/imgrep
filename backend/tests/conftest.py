@@ -15,6 +15,7 @@ os.environ["DB_NAME"] = "test_app.db"
 from app.main import app
 from app.core.database import init_db, engine, AsyncSessionLocal
 from app.core.config import DB_PATH
+from app.services.vector_store import VectorStoreService
 
 # Suppress DeprecationWarnings from external libraries during tests
 warnings.filterwarnings("ignore", category=DeprecationWarning)
@@ -69,3 +70,52 @@ async def client(test_db):
     """Async client for testing."""
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
+
+
+@pytest.fixture
+def chroma_test_manager():
+    """Create a temporary Chroma instance for testing.
+
+    This fixture also sets up the app's dependency override so that
+    the test Chroma instance is used instead of the real one.
+    """
+    from app.core.config import CHROMA_DATA_PATH
+
+    test_path = CHROMA_DATA_PATH.parent / "chroma_test"
+    if test_path.exists():
+        shutil.rmtree(test_path)
+
+    manager = VectorStoreService()
+    test_collection_name = "test_images"
+
+    # Clean up if collection exists
+    try:
+        manager.client.delete_collection(test_collection_name)
+    except:
+        pass
+
+    collection = manager.client.get_or_create_collection(
+        name=test_collection_name,
+        metadata={"hnsw:space": "cosine"}
+    )
+    manager.collection = collection
+
+    # Override the dependency for the app
+    from app.dependencies import get_vector_store_service
+    original = get_vector_store_service
+
+    def _override():
+        return manager
+
+    app.dependency_overrides[get_vector_store_service] = _override
+
+    yield manager
+
+    # Clean up
+    try:
+        manager.client.delete_collection(test_collection_name)
+    except:
+        pass
+
+    # Remove the override
+    app.dependency_overrides.clear()

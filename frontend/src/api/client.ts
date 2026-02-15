@@ -8,6 +8,7 @@ export interface JobStatus {
   total: number;
   processed: number;
   errors: string[];
+  directory_path?: string;
 }
 
 export interface TrackedDirectory {
@@ -19,6 +20,7 @@ export interface TrackedDirectory {
   last_error: string | null;
   sync_interval_seconds: number;
   created_at: string;
+  file_count?: number;
 }
 
 export interface ClusterNode {
@@ -134,9 +136,34 @@ export const api = {
     return response.json();
   },
 
+  addTrackedDirectory: async (path: string, syncStrategy = 'snapshot', syncInterval = 300): Promise<TrackedDirectory> => {
+    const response = await fetch(`${API_BASE}/api/directories/tracked`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            path,
+            sync_strategy: syncStrategy,
+            sync_interval_seconds: syncInterval
+        }),
+    });
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || 'Failed to add tracked directory');
+    }
+    return response.json();
+  },
+
   listJobs: async (): Promise<{ jobs: JobStatus[] }> => {
     const response = await fetch(`${API_BASE}/api/directories/jobs`);
     if (!response.ok) throw new Error('Failed to list jobs');
+    return response.json();
+  },
+  
+  removeTrackedDirectory: async (directoryId: number) => {
+    const response = await fetch(`${API_BASE}/api/directories/tracked/${directoryId}`, {
+        method: 'DELETE',
+    });
+    if (!response.ok) throw new Error('Failed to remove directory');
     return response.json();
   },
 
