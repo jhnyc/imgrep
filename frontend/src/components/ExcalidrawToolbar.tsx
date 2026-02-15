@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { api, queryKeys } from '../api/client';
-import { SettingsDropdown } from './toolbar/SettingsDropdown';
+import { SettingsDialog } from './toolbar/SettingsDialog';
 import { StatsDropdown } from './toolbar/StatsDropdown';
 import { ToolbarButton } from './toolbar/ToolbarButton';
 import { UploadPopover } from './toolbar/UploadPopover';
@@ -132,7 +132,7 @@ export default function ExcalidrawToolbar(props: ExcalidrawToolbarProps) {
 
                     <div className="w-px h-6 bg-gray-200 mx-0.5" />
 
-                    <SettingsDropdown
+                    <SettingsDialog
                         currentStrategy={props.currentStrategy}
                         onStrategyChange={props.onStrategyChange}
                         currentProjection={props.currentProjection}
@@ -145,6 +145,7 @@ export default function ExcalidrawToolbar(props: ExcalidrawToolbarProps) {
                         onExplosionEnabledChange={props.onExplosionEnabledChange}
                         isBuilt={isBuilt}
                         handleBuild={handleBuild}
+                        onAddDirectory={props.onAddDirectory}
                     />
                 </div>
             </div>

@@ -10,6 +10,17 @@ export interface JobStatus {
   errors: string[];
 }
 
+export interface TrackedDirectory {
+  id: number;
+  path: string;
+  sync_strategy: string;
+  is_active: boolean;
+  last_synced_at: string | null;
+  last_error: string | null;
+  sync_interval_seconds: number;
+  created_at: string;
+}
+
 export interface ClusterNode {
   id: number;
   x: number;
@@ -114,6 +125,18 @@ export const api = {
   getJobStatus: async (jobId: string): Promise<JobStatus> => {
     const response = await fetch(`${API_BASE}/api/directories/job/${jobId}`);
     if (!response.ok) throw new Error('Failed to get job status');
+    return response.json();
+  },
+
+  listTrackedDirectories: async (): Promise<{ directories: TrackedDirectory[] }> => {
+    const response = await fetch(`${API_BASE}/api/directories/tracked`);
+    if (!response.ok) throw new Error('Failed to list tracked directories');
+    return response.json();
+  },
+
+  listJobs: async (): Promise<{ jobs: JobStatus[] }> => {
+    const response = await fetch(`${API_BASE}/api/directories/jobs`);
+    if (!response.ok) throw new Error('Failed to list jobs');
     return response.json();
   },
 
@@ -236,4 +259,6 @@ export const queryKeys = {
   imageDetails: (imageId: number) => ['image', imageId] as const,
   searchResults: (query: string) => ['search', query] as const,
   clusteringStatus: () => ['clusters', 'status'] as const,
+  trackedDirectories: () => ['directories', 'tracked'] as const,
+  jobs: () => ['directories', 'jobs'] as const,
 };
