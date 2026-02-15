@@ -70,7 +70,7 @@
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.129 0.042 264.695);
   /* User's original primary color #6965db */
-  --primary: #6965db;
+  --primary: oklch(0.129 0.042 264.695);
   --primary-foreground: oklch(0.984 0.003 247.858);
   --secondary: oklch(0.968 0.007 247.896);
   --secondary-foreground: oklch(0.208 0.042 265.755);
