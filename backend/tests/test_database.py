@@ -141,7 +141,7 @@ async def test_get_all_embeddings_excludes_null(test_db):
 @pytest.mark.asyncio
 async def test_get_current_clustering_run_none(test_db):
     """Test getting current clustering run when none exists."""
-    result = await get_current_clustering_run("hdbscan", "corpus123")
+    result = await get_current_clustering_run("hdbscan", "umap", "none", "corpus123")
     assert result is None
 
 
@@ -153,13 +153,15 @@ async def test_get_current_clustering_run_found(test_db):
     async with AsyncSessionLocal() as session:
         run = ClusteringRun(
             strategy="hdbscan",
+            projection_strategy="umap",
+            overlap_strategy="none",
             image_corpus_hash="corpus123",
             is_current=True
         )
         session.add(run)
         await session.commit()
 
-    result = await get_current_clustering_run("hdbscan", "corpus123")
+    result = await get_current_clustering_run("hdbscan", "umap", "none", "corpus123")
 
     assert result is not None
     assert result.strategy == "hdbscan"
@@ -175,13 +177,15 @@ async def test_get_current_clustering_run_wrong_strategy(test_db):
     async with AsyncSessionLocal() as session:
         run = ClusteringRun(
             strategy="hdbscan",
+            projection_strategy="umap",
+            overlap_strategy="none",
             image_corpus_hash="corpus123",
             is_current=True
         )
         session.add(run)
         await session.commit()
 
-    result = await get_current_clustering_run("kmeans", "corpus123")
+    result = await get_current_clustering_run("kmeans", "umap", "none", "corpus123")
     assert result is None
 
 
@@ -193,13 +197,15 @@ async def test_get_current_clustering_run_not_current(test_db):
     async with AsyncSessionLocal() as session:
         run = ClusteringRun(
             strategy="hdbscan",
+            projection_strategy="umap",
+            overlap_strategy="none",
             image_corpus_hash="corpus123",
             is_current=False
         )
         session.add(run)
         await session.commit()
 
-    result = await get_current_clustering_run("hdbscan", "corpus123")
+    result = await get_current_clustering_run("hdbscan", "umap", "none", "corpus123")
     assert result is None
 
 
@@ -213,11 +219,15 @@ async def test_set_current_clustering_run(test_db):
         # Create two runs for same strategy
         run1 = ClusteringRun(
             strategy="hdbscan",
+            projection_strategy="umap",
+            overlap_strategy="none",
             image_corpus_hash="corpus123",
             is_current=True
         )
         run2 = ClusteringRun(
             strategy="hdbscan",
+            projection_strategy="umap",
+            overlap_strategy="none",
             image_corpus_hash="corpus456",
             is_current=False
         )
@@ -225,7 +235,7 @@ async def test_set_current_clustering_run(test_db):
         await session.commit()
 
     # Set run2 as current
-    await set_current_clustering_run(2, "hdbscan")
+    await set_current_clustering_run(2, "hdbscan", "umap", "none")
 
     # Verify run1 is no longer current
     async with AsyncSessionLocal() as session:

@@ -113,6 +113,7 @@ async def test_embed_images_with_progress_batch_error(tmp_path):
         nonlocal call_count
         call_count += 1
         if call_count == 1:
+            # First batch returns only 1 embedding for 2 images (mock behavior)
             return [[0.1, 0.2]]
         raise Exception("Model error")
 
@@ -127,7 +128,14 @@ async def test_embed_images_with_progress_batch_error(tmp_path):
             progress_callback=progress_callback
         )
 
-        assert len(result) == 1
+        # Result list has same length as input
+        assert len(result) == 4
+        assert result[0] == [0.1, 0.2]
+        # result[1] is None because mock returned only 1 embedding for batch of 2
+        assert result[1] is None
+        # result[2] and result[3] are None due to batch error
+        assert result[2] is None
+        assert result[3] is None
         assert len(errors) == 1
         assert "Model error" in errors[0]
 

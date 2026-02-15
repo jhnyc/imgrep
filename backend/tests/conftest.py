@@ -6,13 +6,14 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient, ASGITransport
 import asyncio
+from contextlib import asynccontextmanager
 
 # Set database name environment variable before importing app logic
 os.environ["DB_NAME"] = "test_app.db"
 
 # Import app components after setting env var
 from app.main import app
-from app.core.database import init_db, engine
+from app.core.database import init_db, engine, AsyncSessionLocal
 from app.core.config import DB_PATH
 
 # Suppress DeprecationWarnings from external libraries during tests
@@ -27,7 +28,11 @@ def event_loop():
 
 @pytest_asyncio.fixture
 async def test_db():
-    """Create a fresh database for tests."""
+    """Database setup fixture - initializes schema and handles cleanup.
+
+    Use this when you just need the database ready but will create
+    your own sessions using AsyncSessionLocal().
+    """
     # Ensure clean slate
     if DB_PATH.exists():
         os.remove(DB_PATH)
@@ -41,6 +46,23 @@ async def test_db():
     await engine.dispose()
     if DB_PATH.exists():
         os.remove(DB_PATH)
+
+
+@pytest_asyncio.fixture
+async def db_session(test_db):
+    """Provides an async database session for tests.
+
+    Usage:
+        async with db_session() as session:
+            # use session here
+    """
+    @asynccontextmanager
+    async def _get_session():
+        async with AsyncSessionLocal() as session:
+            yield session
+
+    return _get_session
+
 
 @pytest_asyncio.fixture
 async def client(test_db):

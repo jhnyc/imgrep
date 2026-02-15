@@ -148,7 +148,7 @@ async def test_remove_tracked_directory_not_found(test_db):
 
 
 @pytest.mark.asyncio
-async def test_remove_tracked_directory_with_snapshots(test_db, tmp_path):
+async def test_remove_tracked_directory_with_snapshots(db_session, tmp_path):
     """Test that removing a tracked directory cleans up snapshots."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
@@ -164,7 +164,7 @@ async def test_remove_tracked_directory_with_snapshots(test_db, tmp_path):
     directory_id = tracked_dir.id
 
     # Perform sync to create snapshots
-    async with test_db() as session:
+    async with db_session() as session:
         from app.services.sync_strategies import SnapshotSyncStrategy
         strategy = SnapshotSyncStrategy()
         await strategy.sync(tracked_dir, session)
@@ -184,7 +184,7 @@ async def test_remove_tracked_directory_with_snapshots(test_db, tmp_path):
     assert removed is True
 
     # Verify snapshots are gone
-    async with test_db() as session:
+    async with db_session() as session:
         result = await session.execute(
             select(DirectorySnapshot).where(
                 DirectorySnapshot.tracked_directory_id == directory_id
@@ -349,7 +349,7 @@ async def test_start_stop_background_sync(test_db):
 
 
 @pytest.mark.asyncio
-async def test_background_sync_skips_on_no_changes(test_db, tmp_path):
+async def test_background_sync_skips_on_no_changes(db_session, tmp_path):
     """Test that background sync skips directories that don't need syncing."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
@@ -364,7 +364,7 @@ async def test_background_sync_skips_on_no_changes(test_db, tmp_path):
 
     # Set last_synced to now so it won't sync again immediately
     tracked_dir.last_synced_at = datetime.now(timezone.utc)
-    async with test_db() as session:
+    async with db_session() as session:
         session.add(tracked_dir)
         await session.commit()
 
@@ -442,7 +442,7 @@ async def test_background_sync_with_interval_reached(test_db, tmp_path):
 # ============================================
 
 @pytest.mark.asyncio
-async def test_handle_deleted_files(test_db, tmp_path):
+async def test_handle_deleted_files(db_session, tmp_path):
     """Test that deleted files are removed from database."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
@@ -450,7 +450,7 @@ async def test_handle_deleted_files(test_db, tmp_path):
     service = DirectorySyncService()
     tracked_dir = await service.add_tracked_directory(str(images_dir))
 
-    async with test_db() as session:
+    async with db_session() as session:
         # Create a mock image in the database
         from app.services.image import compute_file_hash
         img_path = create_test_image(images_dir / "to_delete.jpg")
@@ -528,7 +528,7 @@ async def test_full_sync_workflow_snapshot(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_full_sync_workflow_merkle(test_db, tmp_path):
+async def test_full_sync_workflow_merkle(db_session, tmp_path):
     """Test full workflow with Merkle strategy."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
@@ -548,7 +548,7 @@ async def test_full_sync_workflow_merkle(test_db, tmp_path):
     assert result1.strategy_used == "merkle"
 
     # Verify Merkle nodes exist
-    async with test_db() as session:
+    async with db_session() as session:
         from sqlalchemy import select
         result = await session.execute(
             select(MerkleNode).where(

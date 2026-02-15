@@ -52,7 +52,7 @@ def create_test_image(path: Path, content: bytes = None) -> Path:
 # ============================================
 
 @pytest.mark.asyncio
-async def test_snapshot_strategy_first_sync(test_db, tmp_path):
+async def test_snapshot_strategy_first_sync(db_session, tmp_path):
     """Test first sync with no existing snapshots - should add all images."""
     # Create test directory with images
     images_dir = tmp_path / "photos"
@@ -61,7 +61,7 @@ async def test_snapshot_strategy_first_sync(test_db, tmp_path):
     create_test_image(images_dir / "img2.jpg")
 
     # Create tracked directory
-    async with test_db() as session:
+    async with db_session() as session:
         tracked_dir = TrackedDirectory(
             path=str(images_dir),
             sync_strategy="snapshot",
@@ -100,14 +100,15 @@ async def test_snapshot_strategy_first_sync(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_snapshot_strategy_no_changes(test_db, tmp_path):
+async def test_snapshot_strategy_no_changes(db_session, tmp_path):
     """Test sync with no changes - should detect all files as unchanged."""
     # Create test directory with images
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
     create_test_image(images_dir / "img1.jpg")
 
-    async with test_db() as session:
+    from app.core.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as session:
         tracked_dir = TrackedDirectory(
             path=str(images_dir),
             sync_strategy="snapshot",
@@ -131,13 +132,14 @@ async def test_snapshot_strategy_no_changes(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_snapshot_strategy_new_file(test_db, tmp_path):
+async def test_snapshot_strategy_new_file(db_session, tmp_path):
     """Test detecting new files after initial sync."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
     create_test_image(images_dir / "img1.jpg")
 
-    async with test_db() as session:
+    from app.core.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as session:
         tracked_dir = TrackedDirectory(
             path=str(images_dir),
             sync_strategy="snapshot",
@@ -163,14 +165,14 @@ async def test_snapshot_strategy_new_file(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_snapshot_strategy_deleted_file(test_db, tmp_path):
+async def test_snapshot_strategy_deleted_file(db_session, tmp_path):
     """Test detecting deleted files."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
     img1 = create_test_image(images_dir / "img1.jpg")
     img2 = create_test_image(images_dir / "img2.jpg")
 
-    async with test_db() as session:
+    async with db_session() as session:
         tracked_dir = TrackedDirectory(
             path=str(images_dir),
             sync_strategy="snapshot",
@@ -195,13 +197,13 @@ async def test_snapshot_strategy_deleted_file(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_snapshot_strategy_modified_file(test_db, tmp_path):
+async def test_snapshot_strategy_modified_file(db_session, tmp_path):
     """Test detecting modified files (content changes)."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
     img1 = create_test_image(images_dir / "img1.jpg")
 
-    async with test_db() as session:
+    async with db_session() as session:
         tracked_dir = TrackedDirectory(
             path=str(images_dir),
             sync_strategy="snapshot",
@@ -227,7 +229,7 @@ async def test_snapshot_strategy_modified_file(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_snapshot_strategy_subdirectories(test_db, tmp_path):
+async def test_snapshot_strategy_subdirectories(db_session, tmp_path):
     """Test that strategy recursively finds images in subdirectories."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
@@ -237,7 +239,7 @@ async def test_snapshot_strategy_subdirectories(test_db, tmp_path):
     create_test_image(images_dir / "root.jpg")
     create_test_image(subdir / "nested.jpg")
 
-    async with test_db() as session:
+    async with db_session() as session:
         tracked_dir = TrackedDirectory(
             path=str(images_dir),
             sync_strategy="snapshot",
@@ -259,7 +261,8 @@ async def test_snapshot_strategy_nonexistent_directory(test_db, tmp_path):
     """Test handling of non-existent directory."""
     nonexistent = tmp_path / "does_not_exist"
 
-    async with test_db() as session:
+    from app.core.database import AsyncSessionLocal
+    async with AsyncSessionLocal() as session:
         tracked_dir = TrackedDirectory(
             path=str(nonexistent),
             sync_strategy="snapshot",
@@ -280,13 +283,13 @@ async def test_snapshot_strategy_nonexistent_directory(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_snapshot_strategy_cleanup(test_db, tmp_path):
+async def test_snapshot_strategy_cleanup(db_session, tmp_path):
     """Test cleanup removes all snapshots for a directory."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
     create_test_image(images_dir / "img1.jpg")
 
-    async with test_db() as session:
+    async with db_session() as session:
         tracked_dir = TrackedDirectory(
             path=str(images_dir),
             sync_strategy="snapshot",
@@ -325,14 +328,14 @@ async def test_snapshot_strategy_cleanup(test_db, tmp_path):
 # ============================================
 
 @pytest.mark.asyncio
-async def test_merkle_strategy_first_sync(test_db, tmp_path):
+async def test_merkle_strategy_first_sync(db_session, tmp_path):
     """Test first sync with no existing Merkle tree."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
     create_test_image(images_dir / "img1.jpg")
     create_test_image(images_dir / "img2.jpg")
 
-    async with test_db() as session:
+    async with db_session() as session:
         tracked_dir = TrackedDirectory(
             path=str(images_dir),
             sync_strategy="merkle",
@@ -364,13 +367,13 @@ async def test_merkle_strategy_first_sync(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_merkle_strategy_no_changes(test_db, tmp_path):
+async def test_merkle_strategy_no_changes(db_session, tmp_path):
     """Test sync with no changes - existing tree matches filesystem."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
     create_test_image(images_dir / "img1.jpg")
 
-    async with test_db() as session:
+    async with db_session() as session:
         tracked_dir = TrackedDirectory(
             path=str(images_dir),
             sync_strategy="merkle",
@@ -392,13 +395,13 @@ async def test_merkle_strategy_no_changes(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_merkle_strategy_new_file(test_db, tmp_path):
+async def test_merkle_strategy_new_file(db_session, tmp_path):
     """Test detecting new files via Merkle tree comparison."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
     create_test_image(images_dir / "img1.jpg")
 
-    async with test_db() as session:
+    async with db_session() as session:
         tracked_dir = TrackedDirectory(
             path=str(images_dir),
             sync_strategy="merkle",
@@ -423,13 +426,13 @@ async def test_merkle_strategy_new_file(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_merkle_strategy_deleted_file(test_db, tmp_path):
+async def test_merkle_strategy_deleted_file(db_session, tmp_path):
     """Test detecting deleted files via Merkle tree."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
     img1 = create_test_image(images_dir / "img1.jpg")
 
-    async with test_db() as session:
+    async with db_session() as session:
         tracked_dir = TrackedDirectory(
             path=str(images_dir),
             sync_strategy="merkle",
@@ -454,7 +457,7 @@ async def test_merkle_strategy_deleted_file(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_merkle_strategy_nested_directories(test_db, tmp_path):
+async def test_merkle_strategy_nested_directories(db_session, tmp_path):
     """Test Merkle tree building with nested subdirectories."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
@@ -467,7 +470,7 @@ async def test_merkle_strategy_nested_directories(test_db, tmp_path):
     create_test_image(subdir1 / "level1.jpg")
     create_test_image(subdir2 / "level2.jpg")
 
-    async with test_db() as session:
+    async with db_session() as session:
         tracked_dir = TrackedDirectory(
             path=str(images_dir),
             sync_strategy="merkle",
@@ -500,13 +503,13 @@ async def test_merkle_strategy_nested_directories(test_db, tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_merkle_strategy_cleanup(test_db, tmp_path):
+async def test_merkle_strategy_cleanup(db_session, tmp_path):
     """Test cleanup removes Merkle tree for a directory."""
     images_dir = tmp_path / "photos"
     images_dir.mkdir()
     create_test_image(images_dir / "img1.jpg")
 
-    async with test_db() as session:
+    async with db_session() as session:
         tracked_dir = TrackedDirectory(
             path=str(images_dir),
             sync_strategy="merkle",
