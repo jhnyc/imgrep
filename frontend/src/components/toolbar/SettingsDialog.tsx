@@ -221,7 +221,7 @@ export function SettingsDialog({
 
             <Dialog open={open} onOpenChange={setOpen}>
                 <DialogContent className="max-w-[1000px] p-0 h-[600px] overflow-hidden rounded-lg border-border shadow-2xl bg-white gap-0">
-                    <div className="flex h-full w-full">
+                    <div className="flex h-full w-full ">
                         {/* Sidebar */}
                         <div className="w-[260px] bg-[#fbfbfa] border-r border-border/60 p-4 space-y-1 shrink-0 overflow-y-auto">
                             {sidebarItems.map((item) => (
@@ -229,22 +229,20 @@ export function SettingsDialog({
                                     key={item.id}
                                     onClick={() => setActiveTab(item.id as Tab)}
                                     className={cn(
-                                        "w-full flex items-center gap-3 px-3 py-2 text-[13px] font-medium rounded-md transition-colors",
+                                        "w-full flex items-center gap-2.5 px-3 py-1.5 rounded text-[14px] transition-colors text-left",
                                         activeTab === item.id
-                                            ? "bg-white text-gray-900 shadow-sm ring-1 ring-gray-200"
-                                            : "text-gray-500 hover:text-gray-900 hover:bg-gray-100/60"
+                                            ? "bg-[#efefee] text-gray-900 font-medium"
+                                            : "text-gray-600 hover:bg-[#efefee]/60"
                                     )}
                                 >
-                                    <item.icon size={16} className={cn(
-                                        activeTab === item.id ? "text-gray-900" : "text-gray-400"
-                                    )} />
+                                    <item.icon size={16} className="shrink-0" />
                                     {item.label}
                                 </button>
                             ))}
                         </div>
 
                         {/* Content */}
-                        <div className="flex-1 flex flex-col h-full overflow-y-auto bg-white">
+                        <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
                             <div className="px-10 py-8 shrink-0">
                                 <h1 className="text-[20px] font-bold text-gray-900">
                                     {sidebarItems.find(i => i.id === activeTab)?.label}
