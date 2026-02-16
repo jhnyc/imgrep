@@ -220,8 +220,8 @@ export function SettingsDialog({
             </Tooltip>
 
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="max-w-[1000px] p-0 h-[600px] overflow-hidden rounded-lg border-border shadow-2xl bg-white gap-0">
-                    <div className="flex h-full w-full ">
+                <DialogContent className="max-w-[1000px] w-full p-0 h-[600px] flex flex-col overflow-hidden rounded-lg border-border shadow-2xl bg-white gap-0">
+                    <div className="flex h-full w-full overflow-hidden">
                         {/* Sidebar */}
                         <div className="w-[260px] bg-[#fbfbfa] border-r border-border/60 p-4 space-y-1 shrink-0 overflow-y-auto">
                             {sidebarItems.map((item) => (
