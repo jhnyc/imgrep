@@ -31,13 +31,31 @@ class DirectorySyncService:
         self._stop_event: Optional[asyncio.Event] = None  # Lazy initialization
         self._sync_interval_seconds = 3600  # Default 1h
         self._sync_enabled = True
+        self._batch_size = 12
+        self._image_extensions: List[str] = [".jpg", ".jpeg", ".png", ".webp"]
+        self._embedding_model = "jina-clip-v2"
         self._vector_store = vector_store
         self._ingestion_job_service = ingestion_job_service
 
-    async def update_settings(self, auto_reindex: bool, sync_frequency: str) -> None:
+    async def update_settings(
+        self, 
+        auto_reindex: bool, 
+        sync_frequency: str,
+        batch_size: Optional[int] = None,
+        image_extensions: Optional[List[str]] = None,
+        embedding_model: Optional[str] = None
+    ) -> None:
         """Update sync settings dynamically."""
         self._sync_enabled = auto_reindex
         
+        if batch_size:
+            self._batch_size = batch_size
+        if image_extensions:
+            # Ensure extensions start with dot
+            self._image_extensions = [ext if ext.startswith('.') else f".{ext}" for ext in image_extensions]
+        if embedding_model:
+            self._embedding_model = embedding_model
+
         # Parse frequency string to seconds
         if sync_frequency.endswith("m"):
             self._sync_interval_seconds = int(sync_frequency[:-1]) * 60
@@ -427,7 +445,7 @@ class DirectorySyncService:
 
         embeddings, _ = await embed_images_with_progress(
             image_paths,
-            batch_size=12,
+            batch_size=self._batch_size,
             progress_callback=progress_callback,
         )
 
@@ -439,7 +457,13 @@ class DirectorySyncService:
 
         if valid_data:
             valid_thumbnails, valid_embeddings = zip(*valid_data)
-            await save_ingested_images(valid_thumbnails, valid_embeddings, self._vector_store)
+            await save_ingested_images(
+                session, 
+                valid_thumbnails, 
+                valid_embeddings, 
+                self._vector_store,
+                model_name=self._embedding_model
+            )
 
     async def start_background_sync(self) -> None:
         """Start background sync task."""
@@ -473,9 +497,12 @@ class DirectorySyncService:
                 if settings:
                     await self.update_settings(
                         auto_reindex=settings.auto_reindex,
-                        sync_frequency=settings.sync_frequency
+                        sync_frequency=settings.sync_frequency,
+                        batch_size=settings.batch_size,
+                        image_extensions=settings.image_extensions,
+                        embedding_model=settings.embedding_model
                     )
-                    print(f"[DEBUG] Loaded background sync settings: enabled={settings.auto_reindex}, freq={settings.sync_frequency}")
+                    print(f"[DEBUG] Loaded background sync settings: enabled={settings.auto_reindex}, freq={settings.sync_frequency}, model={settings.embedding_model}, batch={settings.batch_size}, extensions={settings.image_extensions}")
         except Exception as e:
             print(f"[ERROR] Failed to load sync settings: {e}")
 
@@ -509,14 +536,18 @@ class DirectorySyncService:
             # Use a fresh session for the actual sync to avoid long-lived transaction issues
             async with AsyncSessionLocal() as session:
                 # Re-fetch tracked_dir in this session
+                from sqlalchemy.orm import noload
                 result = await session.execute(
-                    select(TrackedDirectory).where(TrackedDirectory.id == tracked_dir.id)
+                    select(TrackedDirectory)
+                    .options(noload(TrackedDirectory.snapshots), noload(TrackedDirectory.merkle_nodes))
+                    .where(TrackedDirectory.id == tracked_dir.id)
                 )
                 db_tracked_dir = result.scalar_one_or_none()
                 if not db_tracked_dir:
                     return
 
-                sync_result = await strategy.sync(db_tracked_dir, session)
+                # Pass saved image extensions to strategy
+                sync_result = await strategy.sync(db_tracked_dir, session, extensions=self._image_extensions)
                 await self._process_sync_changes(db_tracked_dir, sync_result, session, job_id=job_id)
                 
                 # Success - mark in job service
