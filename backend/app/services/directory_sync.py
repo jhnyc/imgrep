@@ -534,14 +534,23 @@ class DirectorySyncService:
             strategy = get_sync_strategy(tracked_dir.sync_strategy)
             
             # Use a fresh session for the actual sync to avoid long-lived transaction issues
+            # Use a fresh session for the actual sync to avoid long-lived transaction issues
             async with AsyncSessionLocal() as session:
                 # Re-fetch tracked_dir in this session
-                from sqlalchemy.orm import noload
-                result = await session.execute(
-                    select(TrackedDirectory)
-                    .options(noload(TrackedDirectory.snapshots), noload(TrackedDirectory.merkle_nodes))
-                    .where(TrackedDirectory.id == tracked_dir.id)
-                )
+                from sqlalchemy.orm import selectinload
+                
+                query = select(TrackedDirectory).where(TrackedDirectory.id == tracked_dir.id)
+                
+                # Eagerly load relationships to avoid implicit lazy load errors during sync
+                # Dictionary snapshots and merkle nodes are loaded anyway by strategies, 
+                # so identity map ensures we don't double memory usage.
+                if tracked_dir.sync_strategy == "merkle":
+                    query = query.options(selectinload(TrackedDirectory.merkle_nodes))
+                else: 
+                    # Default/snapshot
+                    query = query.options(selectinload(TrackedDirectory.snapshots))
+
+                result = await session.execute(query)
                 db_tracked_dir = result.scalar_one_or_none()
                 if not db_tracked_dir:
                     return
