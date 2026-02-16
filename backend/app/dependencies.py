@@ -138,14 +138,11 @@ async def get_ingestion_job_service(
 ) -> AsyncGenerator[IngestionJobService, None]:
     """
     Get an IngestionJobService instance.
-
-    Args:
-        vector_store: VectorStoreService singleton
-
+    
     Yields:
-        IngestionJobService: An ingestion job service instance
+        IngestionJobService: The ingestion job service singleton
     """
-    yield IngestionJobService(vector_store=vector_store)
+    yield get_ingestion_job_service_singleton()
 
 
 # ============================================================================

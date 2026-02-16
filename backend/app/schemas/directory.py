@@ -74,3 +74,10 @@ class SyncResultResponse(BaseModel):
     errors: List[str]
     sync_duration_seconds: float
     strategy_used: str
+
+
+class SyncTriggerResponse(BaseModel):
+    """Response model for triggering a sync"""
+    job_id: str
+    status: str
+

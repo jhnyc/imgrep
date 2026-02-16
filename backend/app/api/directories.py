@@ -18,6 +18,7 @@ from ..schemas.directory import (
     TrackedDirectoryListResponse,
     AddTrackedDirectoryRequest,
     SyncResultResponse,
+    SyncTriggerResponse,
 )
 
 router = APIRouter(prefix="/api/directories", tags=["directories"])
@@ -178,25 +179,25 @@ async def remove_tracked_directory(
     return {"message": "Tracked directory removed", "directory_id": directory_id}
 
 
-@router.post("/tracked/{directory_id}/sync", response_model=SyncResultResponse)
+@router.post("/tracked/{directory_id}/sync", response_model=SyncTriggerResponse)
 async def sync_tracked_directory(
     directory_id: int,
+    background_tasks: BackgroundTasks,
     directory_sync_service= Depends(get_directory_sync_service),
+    ingestion_job_service= Depends(get_ingestion_job_service),
 ):
-    """Manually trigger a sync for a tracked directory."""
+    """Manually trigger a sync for a tracked directory in the background."""
     try:
-        result = await directory_sync_service.sync_directory(directory_id)
-        return SyncResultResponse(
-            tracked_directory_id=result.tracked_directory_id,
-            added=result.added,
-            modified=result.modified,
-            deleted=result.deleted,
-            unchanged=result.unchanged,
-            errors=result.errors,
-            sync_duration_seconds=result.sync_duration_seconds,
-            strategy_used=result.strategy_used,
+        # Create a job ID for tracking
+        job_id = ingestion_job_service.create_job_id()
+        ingestion_job_service.init_job(job_id)
+        
+        # Start sync in background
+        background_tasks.add_task(directory_sync_service.sync_directory, directory_id, job_id)
+        
+        return SyncTriggerResponse(
+            job_id=job_id,
+            status="pending"
         )
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Sync failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start sync: {e}")
