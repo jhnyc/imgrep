@@ -220,16 +220,16 @@ export function SettingsDialog({
             </Tooltip>
 
             <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent className="max-w-[1000px] w-full p-0 h-[600px] flex flex-col overflow-hidden rounded-lg border-border shadow-2xl bg-white gap-0">
+                <DialogContent className="max-w-[800px] w-full p-0 h-[600px] flex flex-col overflow-hidden rounded-lg border-border shadow-2xl bg-white gap-0">
                     <div className="flex h-full w-full overflow-hidden">
                         {/* Sidebar */}
-                        <div className="w-[260px] bg-[#fbfbfa] border-r border-border/60 p-4 space-y-1 shrink-0 overflow-y-auto">
+                        <div className="w-[220px] bg-[#fbfbfa] border-r border-border/60 py-4 px-2 space-y-1 shrink-0 overflow-y-auto">
                             {sidebarItems.map((item) => (
                                 <button
                                     key={item.id}
                                     onClick={() => setActiveTab(item.id as Tab)}
                                     className={cn(
-                                        "w-full flex items-center gap-2.5 px-3 py-1.5 rounded text-[14px] transition-colors text-left",
+                                        "w-full flex items-center gap-2.5 px-3 py-1.5 rounded text-sm transition-colors text-left",
                                         activeTab === item.id
                                             ? "bg-[#efefee] text-gray-900 font-medium"
                                             : "text-gray-600 hover:bg-[#efefee]/60"
@@ -244,7 +244,7 @@ export function SettingsDialog({
                         {/* Content */}
                         <div className="flex-1 flex flex-col h-full overflow-hidden bg-white">
                             <div className="px-10 py-8 shrink-0">
-                                <h1 className="text-[20px] font-bold text-gray-900">
+                                <h1 className="text-lg font-bold text-gray-900">
                                     {sidebarItems.find(i => i.id === activeTab)?.label}
                                 </h1>
                             </div>
@@ -256,8 +256,8 @@ export function SettingsDialog({
                                             {/* Tracked Directories */}
                                             <div className="space-y-6">
                                                 <div className="space-y-1">
-                                                    <h2 className="text-[16px] font-semibold text-gray-900">Connected Sources</h2>
-                                                    <p className="text-[13px] text-gray-500">Manage the folders indexed in your workspace.</p>
+                                                    <h2 className="text-md font-semibold text-gray-900">Connected Sources</h2>
+                                                    <p className="text-xs text-gray-500">Manage the folders indexed in your workspace.</p>
                                                 </div>
 
                                                 {totalImages > 0 && (
@@ -270,14 +270,14 @@ export function SettingsDialog({
                                                         <div className="flex justify-between items-end">
                                                             <div className="space-y-0.5">
                                                                 <div className={cn(
-                                                                    "text-[12px]",
+                                                                    "text-xs",
                                                                     isSyncingWorkspace ? "text-blue-700/70" : "text-gray-500"
                                                                 )}>
                                                                     {totalProcessed.toLocaleString()} of {totalImages.toLocaleString()} images indexed
                                                                 </div>
                                                             </div>
                                                             <div className={cn(
-                                                                "text-[14px] font-bold",
+                                                                "text-xs font-bold",
                                                                 isSyncingWorkspace ? "text-blue-900" : "text-gray-900"
                                                             )}>
                                                                 {Math.round(overallProgress)}%
@@ -310,7 +310,7 @@ export function SettingsDialog({
                                                         );
                                                     })}
                                                     {trackedDirectories.length === 0 && (
-                                                        <div className="py-10 text-center text-gray-400 text-[13px]">
+                                                        <div className="py-10 text-center text-gray-400 text-xs">
                                                             No folders connected yet.
                                                         </div>
                                                     )}
@@ -318,13 +318,13 @@ export function SettingsDialog({
                                                 <div className="flex gap-2">
                                                     <Input
                                                         placeholder="Add local directory path..."
-                                                        className="h-9 bg-white transition-all rounded"
+                                                        className="h-9 bg-white transition-all rounded !text-xs shadow-none"
                                                         value={newDirPath}
                                                         onChange={(e) => setNewDirPath(e.target.value)}
                                                     />
                                                     <Button
                                                         variant="outline"
-                                                        className="h-9 px-4 gap-2 bg-white hover:bg-gray-50 text-[13px] font-medium rounded shrink-0"
+                                                        className="h-9 px-4 gap-2 bg-white hover:bg-gray-50 text-xs font-medium rounded shrink-0"
                                                         onClick={handleAddDir}
                                                         disabled={isAddingDir || !newDirPath.trim()}
                                                     >
@@ -341,17 +341,17 @@ export function SettingsDialog({
                                             {/* Inference Engine */}
                                             <div className="flex items-start justify-between">
                                                 <div className="space-y-1 max-w-[440px]">
-                                                    <h2 className="text-[14px] font-medium text-gray-900">Inference Engine</h2>
-                                                    <p className="text-[13px] text-gray-500 leading-relaxed">Select the computer vision model used for semantic search and feature extraction.</p>
+                                                    <h2 className="text-sm font-medium text-gray-900">Inference Engine</h2>
+                                                    <p className="text-xs text-gray-500 leading-relaxed">Select the computer vision model used for semantic search and feature extraction.</p>
                                                 </div>
                                                 <Select value={embeddingModel} onValueChange={handleEmbeddingChange}>
-                                                    <SelectTrigger className="w-[180px] h-8 text-[13px] bg-white rounded focus:ring-0">
+                                                    <SelectTrigger className="w-[180px] h-8 text-xs bg-white rounded focus:ring-0">
                                                         <SelectValue placeholder="Select model" />
                                                     </SelectTrigger>
                                                     <SelectContent className="bg-white border-border z-[100] min-w-[200px] rounded-lg">
-                                                        <SelectItem value="jina-clip-v2" className="py-2 text-[13px] focus:bg-gray-100">Jina CLIP v3</SelectItem>
-                                                        <SelectItem value="vit-base" className="py-2 text-[13px] focus:bg-gray-100">ViT-Base-L14</SelectItem>
-                                                        <SelectItem value="siglip" className="py-2 text-[13px] focus:bg-gray-100">SigLIP-v2</SelectItem>
+                                                        <SelectItem value="jina-clip-v2" className="py-2 text-xs focus:bg-gray-100">Jina CLIP v3</SelectItem>
+                                                        <SelectItem value="vit-base" className="py-2 text-xs focus:bg-gray-100">ViT-Base-L14</SelectItem>
+                                                        <SelectItem value="siglip" className="py-2 text-xs focus:bg-gray-100">SigLIP-v2</SelectItem>
                                                     </SelectContent>
                                                 </Select>
                                             </div>
@@ -360,10 +360,10 @@ export function SettingsDialog({
                                             <div className="space-y-4 pt-8 border-t border-border">
                                                 <div className="flex items-start justify-between">
                                                     <div className="space-y-1 max-w-[440px]">
-                                                        <h2 className="text-[14px] font-medium text-gray-900">Processing Throughput</h2>
-                                                        <p className="text-[13px] text-gray-500 leading-relaxed">Adjust the number of images processed in parallel during indexing.</p>
+                                                        <h2 className="text-sm font-medium text-gray-900">Processing Throughput</h2>
+                                                        <p className="text-xs text-gray-500 leading-relaxed">Adjust the number of images processed in parallel during indexing.</p>
                                                     </div>
-                                                    <div className="text-[13px] font-medium text-gray-900">{batchSize} images/batch</div>
+                                                    <div className="text-xs font-medium text-gray-900">{batchSize} images/batch</div>
                                                 </div>
                                                 <div className="px-2">
                                                     <Slider
@@ -380,8 +380,8 @@ export function SettingsDialog({
                                             {/* Extensions */}
                                             <div className="space-y-4 pt-8 border-t border-border">
                                                 <div className="space-y-1">
-                                                    <h2 className="text-[14px] font-medium text-gray-900">Indexing extensions</h2>
-                                                    <p className="text-[13px] text-gray-500 leading-relaxed">Choose which file formats will be indexed during directory scans.</p>
+                                                    <h2 className="text-sm font-medium text-gray-900">Indexing extensions</h2>
+                                                    <p className="text-xs text-gray-500 leading-relaxed">Choose which file formats will be indexed during directory scans.</p>
                                                 </div>
                                                 <ToggleGroup
                                                     type="multiple"
@@ -405,8 +405,8 @@ export function SettingsDialog({
                                             <div className="space-y-6 pt-8 border-t border-border">
                                                 <div className="flex items-center justify-between">
                                                     <div className="space-y-1">
-                                                        <h2 className="text-[14px] font-medium text-gray-900">Automatic re-indexing</h2>
-                                                        <p className="text-[13px] text-gray-500">Enable background synchronization for connected folders.</p>
+                                                        <h2 className="text-sm font-medium text-gray-900">Automatic re-indexing</h2>
+                                                        <p className="text-xs text-gray-500">Enable background synchronization for connected folders.</p>
                                                     </div>
                                                     <Switch
                                                         checked={autoReindex}
@@ -418,18 +418,18 @@ export function SettingsDialog({
                                                 {autoReindex && (
                                                     <div className="flex items-center justify-between">
                                                         <div className="space-y-1">
-                                                            <h2 className="text-[14px] font-medium text-gray-900">Sync frequency</h2>
-                                                            <p className="text-[13px] text-gray-500">How often the backend checks for file changes.</p>
+                                                            <h2 className="text-sm font-medium text-gray-900">Sync frequency</h2>
+                                                            <p className="text-xs text-gray-500">How often the backend checks for file changes.</p>
                                                         </div>
                                                         <Select value={syncFrequency} onValueChange={handleSyncFrequencyChange}>
-                                                            <SelectTrigger className="w-[140px] h-8 text-[13px] bg-white rounded focus:ring-0">
+                                                            <SelectTrigger className="w-[140px] h-8 text-xs bg-white rounded focus:ring-0">
                                                                 <SelectValue />
                                                             </SelectTrigger>
                                                             <SelectContent className="bg-white border-border z-[100] min-w-[160px] rounded-lg">
-                                                                <SelectItem value="15m" className="py-2 text-[13px] focus:bg-gray-100">Every 15 mins</SelectItem>
-                                                                <SelectItem value="1h" className="py-2 text-[13px] focus:bg-gray-100">Every hour</SelectItem>
-                                                                <SelectItem value="6h" className="py-2 text-[13px] focus:bg-gray-100">Every 6 hours</SelectItem>
-                                                                <SelectItem value="24h" className="py-2 text-[13px] focus:bg-gray-100">Daily</SelectItem>
+                                                                <SelectItem value="15m" className="py-2 text-xs focus:bg-gray-100">Every 15 mins</SelectItem>
+                                                                <SelectItem value="1h" className="py-2 text-xs focus:bg-gray-100">Every hour</SelectItem>
+                                                                <SelectItem value="6h" className="py-2 text-xs focus:bg-gray-100">Every 6 hours</SelectItem>
+                                                                <SelectItem value="24h" className="py-2 text-xs focus:bg-gray-100">Daily</SelectItem>
                                                             </SelectContent>
                                                         </Select>
                                                     </div>
@@ -443,8 +443,8 @@ export function SettingsDialog({
                                             {/* Strategy Engine Section */}
                                             <div className="space-y-6">
                                                 <div className="space-y-1">
-                                                    <h2 className="text-[16px] font-semibold text-gray-900">Strategy Engine</h2>
-                                                    <p className="text-[13px] text-gray-500">Determine how images are grouped based on visual similarity.</p>
+                                                    <h2 className="text-md font-semibold text-gray-900">Strategy Engine</h2>
+                                                    <p className="text-xs text-gray-500">Determine how images are grouped based on visual similarity.</p>
                                                 </div>
 
                                                 <div className="divide-y divide-gray-100">
@@ -462,9 +462,9 @@ export function SettingsDialog({
                                                                             ? "bg-emerald-500"
                                                                             : "bg-gray-200"
                                                                     )} />
-                                                                    <span className="text-[14px] font-medium text-gray-900">{s.label}</span>
+                                                                    <span className="text-sm font-medium text-gray-900">{s.label}</span>
                                                                 </div>
-                                                                <p className="text-[13px] text-gray-500">{s.desc}</p>
+                                                                <p className="text-xs text-gray-500">{s.desc}</p>
                                                             </div>
                                                             <div className="flex items-center gap-2">
                                                                 {!isBuilt(s.id, currentProjection, currentOverlap) && (
@@ -492,17 +492,17 @@ export function SettingsDialog({
                                             <div className="space-y-6 pt-8 border-t border-border">
                                                 <div className="flex items-center justify-between">
                                                     <div className="space-y-1">
-                                                        <h2 className="text-[14px] font-medium text-gray-900">Layout projection</h2>
-                                                        <p className="text-[13px] text-gray-500">Algorithm used to flatten embeddings into 2D.</p>
+                                                        <h2 className="text-sm font-medium text-gray-900">Layout projection</h2>
+                                                        <p className="text-xs text-gray-500">Algorithm used to flatten embeddings into 2D.</p>
                                                     </div>
                                                     <Select value={currentProjection} onValueChange={(v) => onProjectionChange(v)}>
-                                                        <SelectTrigger className="w-[120px] h-8 text-[13px] bg-white rounded focus:ring-0">
+                                                        <SelectTrigger className="w-[120px] h-8 text-xs bg-white rounded focus:ring-0">
                                                             <SelectValue />
                                                         </SelectTrigger>
                                                         <SelectContent className="bg-white border-border z-[100] min-w-[180px] rounded-lg">
-                                                            <SelectItem value="umap" className="py-2 text-[13px] focus:bg-gray-100">UMAP</SelectItem>
-                                                            <SelectItem value="pca" className="py-2 text-[13px] focus:bg-gray-100">PCA</SelectItem>
-                                                            <SelectItem value="tsne" className="py-2 text-[13px] focus:bg-gray-100">t-SNE</SelectItem>
+                                                            <SelectItem value="umap" className="py-2 text-xs focus:bg-gray-100">UMAP</SelectItem>
+                                                            <SelectItem value="pca" className="py-2 text-xs focus:bg-gray-100">PCA</SelectItem>
+                                                            <SelectItem value="tsne" className="py-2 text-xs focus:bg-gray-100">t-SNE</SelectItem>
                                                         </SelectContent>
                                                     </Select>
                                                 </div>
@@ -512,8 +512,8 @@ export function SettingsDialog({
                                             <div className="space-y-6 pt-8 border-t border-border">
                                                 <div className="flex items-center justify-between">
                                                     <div className="space-y-1">
-                                                        <h2 className="text-[14px] font-medium text-gray-900">Overlap reduction</h2>
-                                                        <p className="text-[13px] text-gray-500">Displacement strategy for dense clusters.</p>
+                                                        <h2 className="text-sm font-medium text-gray-900">Overlap reduction</h2>
+                                                        <p className="text-xs text-gray-500">Displacement strategy for dense clusters.</p>
                                                     </div>
                                                     <ToggleGroup
                                                         type="single"
@@ -529,7 +529,7 @@ export function SettingsDialog({
                                                 {currentOverlap === 'jitter' && (
                                                     <div className="flex items-center justify-between gap-10">
                                                         <div className="space-y-1 shrink-0">
-                                                            <h2 className="text-[13px] font-medium text-gray-700">Jitter intensity</h2>
+                                                            <h2 className="text-xs font-medium text-gray-700">Jitter intensity</h2>
                                                             <p className="text-[12px] text-gray-400">Current: {jitterAmount}px</p>
                                                         </div>
                                                         <div className="flex-1 max-w-[300px] px-2">
@@ -549,8 +549,8 @@ export function SettingsDialog({
                                             {/* Reactive Explosion Section */}
                                             <div className="flex items-center justify-between pt-8 border-t border-border">
                                                 <div className="space-y-1">
-                                                    <h2 className="text-[14px] font-medium text-gray-900">Reactive explosion</h2>
-                                                    <p className="text-[13px] text-gray-500">Expand layouts dynamically when hovering over dense areas.</p>
+                                                    <h2 className="text-sm font-medium text-gray-900">Reactive explosion</h2>
+                                                    <p className="text-xs text-gray-500">Expand layouts dynamically when hovering over dense areas.</p>
                                                 </div>
                                                 <Switch
                                                     checked={explosionEnabled}
@@ -590,8 +590,8 @@ function DirectoryItem({ directory, job, onRemove, onReindex }: { directory: Tra
                         <HardDrive size={16} />
                     </div>
                     <div className="min-w-0">
-                        <div className="text-[14px] font-medium text-gray-900 truncate tracking-tight">{directory.path}</div>
-                        <div className="text-[12px] text-gray-500 mt-0.5 flex items-center gap-2">
+                        <div className="text-sm font-medium text-gray-900 truncate">{directory.path}</div>
+                        <div className="text-xs text-gray-500 mt-0.5 flex items-center gap-2">
                             <span className="capitalize">{directory.sync_strategy} sync</span>
                             <span>•</span>
                             <span>{total.toLocaleString()} files</span>
@@ -624,22 +624,22 @@ function DirectoryItem({ directory, job, onRemove, onReindex }: { directory: Tra
                             <Button
                                 variant="ghost"
                                 size="sm"
-                                className="h-7 w-7 p-0 text-gray-400 hover:text-gray-600 hover:bg-gray-100 data-[state=open]:bg-gray-100 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-all rounded-full"
+                                className="h-7 w-7 p-0 text-gray-400 hover:text-gray-600 hover:bg-gray-100 data-[state=open]:bg-gray-100 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-all rounded-md"
                             >
                                 <MoreVertical size={16} />
                             </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-[160px] bg-white border-border z-[100]">
+                        <DropdownMenuContent align="end" className="bg-white border-border z-[100]">
                             <DropdownMenuItem
                                 onClick={() => onReindex(directory.id)}
                                 disabled={!!isSyncing}
-                                className="focus:bg-gray-100 cursor-pointer text-gray-700"
+                                className="focus:bg-gray-100 cursor-pointer text-gray-700 text-xs"
                             >
                                 Reindex now
                             </DropdownMenuItem>
                             <DropdownMenuItem
                                 onClick={() => onRemove(directory.id)}
-                                className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
+                                className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer text-xs"
                             >
                                 Disconnect
                             </DropdownMenuItem>
