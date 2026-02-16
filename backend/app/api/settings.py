@@ -57,7 +57,10 @@ async def update_settings(
     # Notify sync service of changes
     await directory_sync_service.update_settings(
         auto_reindex=settings.auto_reindex,
-        sync_frequency=settings.sync_frequency
+        sync_frequency=settings.sync_frequency,
+        batch_size=settings.batch_size,
+        image_extensions=settings.image_extensions,
+        embedding_model=settings.embedding_model
     )
 
     return SettingsSchema(

@@ -76,6 +76,21 @@ class IngestionJobService:
         try:
             # Use the ingestion logic from image_ingestion.py
             async with AsyncSessionLocal() as session:
+                # Load current settings from DB
+                from ..models.sql import Settings
+                from sqlalchemy import select
+                settings_res = await session.execute(select(Settings).limit(1))
+                settings = settings_res.scalar_one_or_none()
+                
+                batch_size = 12
+                image_extensions = None
+                embedding_model = None
+                
+                if settings:
+                    batch_size = settings.batch_size
+                    image_extensions = settings.image_extensions
+                    embedding_model = settings.embedding_model
+
                 await process_directory_for_ingestion(
                     session=session,
                     directory_path=directory_path,
@@ -83,6 +98,9 @@ class IngestionJobService:
                     thumbnail_dir=thumbnail_dir,
                     vector_store=self._vector_store,
                     progress_callback=progress_callback,
+                    batch_size=batch_size,
+                    image_extensions=image_extensions,
+                    embedding_model=embedding_model,
                 )
 
             self._active_jobs[job_id]["status"] = "completed"
