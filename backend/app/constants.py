@@ -55,6 +55,7 @@ RETRY_BASE_DELAY_SECONDS = int(os.getenv("RETRY_BASE_DELAY_SECONDS", "60"))  # B
 CANVAS_SIZE = float(os.getenv("CANVAS_SIZE", "2000"))
 UMAP_N_NEIGHBORS = int(os.getenv("UMAP_N_NEIGHBORS", "15"))
 UMAP_MIN_DIST = float(os.getenv("UMAP_MIN_DIST", "0.1"))
+PROJECTION_RETRAIN_THRESHOLD = float(os.getenv("PROJECTION_RETRAIN_THRESHOLD", "0.2"))
 
 # Security
 # Comma-separated list of allowed directory prefixes for scanning

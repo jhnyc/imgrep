@@ -1,8 +1,9 @@
 import json
 from abc import ABC, abstractmethod
-from typing import Any, Optional, Dict, List
+from typing import Any, Optional, Dict, List, Tuple
+from datetime import datetime
 import numpy as np
-import umap
+import numpy as np
 from sklearn.cluster import DBSCAN, KMeans
 from sklearn.metrics import silhouette_score
 import hdbscan
@@ -19,6 +20,9 @@ from ..core.database import (
     set_current_clustering_run,
 )
 from ..schemas.cluster import ClustersResponse, ClusterNode, ImagePosition
+from ..constants import PROJECTION_RETRAIN_THRESHOLD
+from .projection import project_to_2d, save_model, load_model
+import os
 
 
 # =============================================================================
@@ -229,64 +233,7 @@ def create_post_processor(strategy_name: str, parameters: Optional[dict] = None)
     return processors[strategy_name](**parameters)
 
 
-# =============================================================================
-# Utility Functions
-# =============================================================================
 
-def project_to_2d(embeddings: np.ndarray, strategy: str = "umap", n_neighbors: int = 15, min_dist: float = 0.1) -> np.ndarray:
-    """
-    Project embeddings to 2D for canvas positioning.
-    Supported strategies: 'umap', 'pca', 'tsne'
-    Returns: Array of shape (n_samples, 2) with x, y coordinates
-    """
-    n_samples = len(embeddings)
-
-    # Handle edge cases
-    if n_samples <= 2:
-        # Simple linear layout for very small datasets
-        if n_samples == 1:
-            return np.array([[0.0, 0.0]])
-        return np.array([[0.0, 0.0], [100.0, 0.0]])
-
-    if strategy == "pca":
-        from sklearn.decomposition import PCA
-        pca = PCA(n_components=2, random_state=42)
-        return pca.fit_transform(embeddings)
-
-    if strategy == "tsne":
-        from sklearn.manifold import TSNE
-        # Perplexity must be less than n_samples
-        perplexity = min(30, max(1, n_samples - 1))
-        reducer = TSNE(
-            n_components=2,
-            perplexity=perplexity,
-            random_state=42,
-            init='pca',
-            learning_rate='auto'
-        )
-        return reducer.fit_transform(embeddings)
-
-    # Default to UMAP
-    # Adjust n_neighbors based on dataset size
-    adjusted_neighbors = min(n_neighbors, n_samples - 1)
-
-    reducer = umap.UMAP(
-        n_components=2,
-        n_neighbors=adjusted_neighbors,
-        min_dist=min_dist,
-        random_state=42,
-        metric="cosine",
-    )
-
-    # UMAP can fail on very small or degenerate datasets
-    try:
-        coordinates = reducer.fit_transform(embeddings)
-        return coordinates
-    except Exception:
-        # Fallback to PCA if UMAP fails
-        from sklearn.decomposition import PCA
-        pca = PCA(n_components=2, random_state=42)
-        return pca.fit_transform(embeddings)
 
 
 def normalize_coordinates(coordinates: np.ndarray, canvas_size: float = None) -> np.ndarray:
@@ -365,6 +312,8 @@ async def perform_clustering(
     Returns:
         ClusteringRun object
     """
+    parameters = parameters or {}
+    
     # Get all embeddings
     image_embeddings = await get_all_embeddings()
     if not image_embeddings:
@@ -372,15 +321,74 @@ async def perform_clustering(
 
     image_ids = list(image_embeddings.keys())
     embeddings_array = [image_embeddings[id] for id in image_ids]
-
     embeddings_np = np.array(embeddings_array)
+    current_count = len(image_ids)
 
-    # Run clustering
+    # Check for previous run to potentially reuse model
+    existing_model = None
+    reused_model_path = None
+    
+    # Threshold for re-training (e.g., 20% growth)
+    RETRAIN_THRESHOLD = PROJECTION_RETRAIN_THRESHOLD
+
+    async with AsyncSessionLocal() as session:
+        # Find latest run with same configuration
+        query = select(ClusteringRun).where(
+            ClusteringRun.strategy == strategy_name,
+            ClusteringRun.projection_strategy == projection_strategy,
+            ClusteringRun.overlap_strategy == overlap_strategy
+        ).order_by(ClusteringRun.created_at.desc()).limit(1)
+        
+        result = await session.execute(query)
+        last_run = result.scalar_one_or_none()
+        
+        if last_run:
+            try:
+                last_params = json.loads(last_run.parameters or "{}")
+                last_model_path = last_params.get("model_path")
+                last_training_size = last_params.get("training_corpus_size", 0)
+                
+                # Check if we should reuse
+                if last_model_path and last_training_size > 0:
+                    growth = (current_count - last_training_size) / last_training_size
+                    
+                    if growth <= RETRAIN_THRESHOLD and projection_strategy != "tsne":
+                        print(f"Dataset growth {growth:.2%} within threshold. Attempting to reuse model from {last_model_path}")
+                        loaded = load_model(last_model_path)
+                        if loaded:
+                            existing_model = loaded
+                            reused_model_path = last_model_path
+                        else:
+                            print("Model file missing, forcing retrain.")
+                    else:
+                        print(f"Dataset growth {growth:.2%} > threshold {RETRAIN_THRESHOLD:.2%} (or tsne). Forcing retrain.")
+            except Exception as e:
+                print(f"Error checking previous run: {e}")
+
+    # Run clustering (labels)
+    # Note: Clustering (HDBSCAN/KMeans) is also usually fit-predict. 
+    # For now we only optimized Projection (UMAP/PCA) persistence as it's the visualization bottleneck.
     strategy = create_strategy(strategy_name, parameters)
     labels = strategy.fit(embeddings_np)
 
     # Project to 2D
-    coordinates = project_to_2d(embeddings_np, strategy=projection_strategy)
+    coordinates, model = project_to_2d(
+        embeddings_np, 
+        strategy=projection_strategy, 
+        existing_model=existing_model
+    )
+    
+    # Save model if new and valid
+    model_path = reused_model_path
+    if model and model != existing_model and projection_strategy != "tsne":
+        # Generate filename
+        filename = f"projection_{projection_strategy}_{corpus_hash}_{int(datetime.now().timestamp())}.pkl"
+        try:
+            model_path = save_model(model, filename)
+            # Clean up old models? TODO
+        except Exception as e:
+            print(f"Failed to save model: {e}")
+
     coordinates = normalize_coordinates(coordinates, canvas_size=2000.0)
 
     # Post-process coordinates
@@ -389,6 +397,12 @@ async def perform_clustering(
 
     # Compute cluster centers
     cluster_centers = compute_cluster_centers(coordinates, labels)
+    
+    # Update parameters with model info
+    run_parameters = parameters.copy()
+    if model_path:
+        run_parameters["model_path"] = os.path.basename(model_path)
+    run_parameters["training_corpus_size"] = current_count
 
     # Save to database
     async with AsyncSessionLocal() as session:
@@ -398,7 +412,7 @@ async def perform_clustering(
             projection_strategy=projection_strategy,
             overlap_strategy=overlap_strategy,
             image_corpus_hash=corpus_hash,
-            parameters=json.dumps(parameters or {}),
+            parameters=json.dumps(run_parameters),
             is_current=True,
         )
         session.add(run)

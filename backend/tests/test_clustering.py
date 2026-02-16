@@ -137,7 +137,7 @@ def test_strategy_get_parameters():
 def test_project_to_2d_single_point():
     """Test 2D projection with single point."""
     embeddings = np.array([[0.1, 0.2, 0.3]])
-    result = project_to_2d(embeddings)
+    result, model = project_to_2d(embeddings)
 
     assert result.shape == (1, 2)
     assert np.array_equal(result, np.array([[0.0, 0.0]]))
@@ -146,7 +146,7 @@ def test_project_to_2d_single_point():
 def test_project_to_2d_two_points():
     """Test 2D projection with two points."""
     embeddings = np.array([[0.1, 0.2], [0.3, 0.4]])
-    result = project_to_2d(embeddings)
+    result, model = project_to_2d(embeddings)
 
     assert result.shape == (2, 2)
 
@@ -154,7 +154,7 @@ def test_project_to_2d_two_points():
 def test_project_to_2d_multiple_points():
     """Test 2D projection with multiple points."""
     embeddings = np.random.rand(10, 5)
-    result = project_to_2d(embeddings)
+    result, model = project_to_2d(embeddings)
 
     assert result.shape == (10, 2)
 

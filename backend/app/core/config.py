@@ -12,6 +12,7 @@ DATA_DIR = BASE_DIR / "data"
 DB_DIR = DATA_DIR
 THUMBNAILS_DIR = DATA_DIR / "thumbnails"
 UPLOADS_DIR = DATA_DIR / "uploads"
+MODELS_DIR = DATA_DIR / "models"
 
 # Embedding Configuration (local SigLIP model)
 SIGLIP_MODEL_NAME = os.getenv("SIGLIP_MODEL_NAME", "google/siglip-base-patch16-512")
@@ -51,6 +52,7 @@ ALLOWED_DIRECTORY_PREFIXES = os.getenv("ALLOWED_DIRECTORY_PREFIXES", "").split("
 THUMBNAILS_DIR.mkdir(parents=True, exist_ok=True)
 UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 DB_DIR.mkdir(parents=True, exist_ok=True)
+MODELS_DIR.mkdir(parents=True, exist_ok=True)
 
 # Chroma configuration
 CHROMA_DATA_PATH = DATA_DIR / "chroma"
