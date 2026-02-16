@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { ScrollArea } from "@/components/ui/scroll-area";
+
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
@@ -249,7 +249,7 @@ export function SettingsDialog({
                                 </h1>
                             </div>
 
-                            <ScrollArea className="flex-1 min-h-0">
+                            <div className="flex-1 overflow-y-auto min-h-0">
                                 <div className="px-10 pb-10 max-w-[700px] space-y-10">
                                     {activeTab === 'general' && (
                                         <div className="space-y-10">
@@ -561,7 +561,7 @@ export function SettingsDialog({
                                         </div>
                                     )}
                                 </div>
-                            </ScrollArea>
+                            </div>
                         </div>
                     </div>
                 </DialogContent>
