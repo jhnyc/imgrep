@@ -175,9 +175,20 @@ export function SettingsDialog({
     ];
 
     const activeJobs = jobsData?.jobs.filter(j => j.status === 'processing' || j.status === 'pending') || [];
-    const totalProcessed = activeJobs.reduce((acc, job) => acc + job.processed, 0);
-    const totalImages = activeJobs.reduce((acc, job) => acc + job.total, 0);
-    const overallProgress = totalImages > 0 ? (totalProcessed / totalImages) * 100 : 0;
+    
+    useEffect(() => {
+        if (open && activeJobs.length > 0) {
+            console.log("[DEBUG] Active Jobs:", activeJobs);
+        }
+    }, [open, activeJobs]);
+
+    const totalProcessed = activeJobs.reduce((acc, job) => acc + (job.processed || 0), 0);
+    const totalImages = activeJobs.reduce((acc, job) => acc + (job.total || 0), 0);
+    // Use job.progress as fallback if processed/total are zero
+    const averageProgress = activeJobs.length > 0 
+        ? (activeJobs.reduce((acc, job) => acc + (job.progress || 0), 0) / activeJobs.length) * 100 
+        : 0;
+    const overallProgress = totalImages > 0 ? (totalProcessed / totalImages) * 100 : averageProgress;
 
     return (
         <>
@@ -272,14 +283,24 @@ export function SettingsDialog({
                                                 </div>
 
                                                 <div className="divide-y divide-gray-100 border-t border-gray-100">
-                                                    {directoriesData?.directories.map((dir) => (
-                                                        <DirectoryItem
-                                                            key={dir.id}
-                                                            directory={dir}
-                                                            job={activeJobs.find(j => j.directory_path === dir.path)}
-                                                            onRemove={handleRemoveDirectory}
-                                                        />
-                                                    ))}
+                                                    {directoriesData?.directories.map((dir) => {
+                                                        // Robust path matching: normalize trailing slashes and handle exact matches
+                                                        const normalizedDirPath = dir.path.replace(/\/$/, '');
+                                                        const dirJob = activeJobs.find(j => {
+                                                            if (!j.directory_path) return false;
+                                                            const normalizedJobPath = j.directory_path.replace(/\/$/, '');
+                                                            return normalizedJobPath === normalizedDirPath;
+                                                        });
+
+                                                        return (
+                                                            <DirectoryItem
+                                                                key={dir.id}
+                                                                directory={dir}
+                                                                job={dirJob}
+                                                                onRemove={handleRemoveDirectory}
+                                                            />
+                                                        );
+                                                    })}
                                                     {directoriesData?.directories.length === 0 && (
                                                         <div className="py-10 text-center text-gray-400 text-[13px]">
                                                             No folders connected yet.
@@ -525,8 +546,20 @@ export function SettingsDialog({
 }
 
 function DirectoryItem({ directory, job, onRemove }: { directory: TrackedDirectory, job?: JobStatus, onRemove: (id: number) => void }) {
+    // Normalizing paths for matching (handle trailing slashes)
     const isProcessing = job && (job.status === 'processing' || job.status === 'pending');
-    const progress = job && job.total > 0 ? (job.processed / job.total) * 100 : (job?.status === 'completed' ? 100 : 0);
+    
+    // Calculate progress with fallbacks
+    let progress = 0;
+    if (job) {
+        if (job.total > 0) {
+            progress = (job.processed / job.total) * 100;
+        } else if (job.progress > 0) {
+            progress = job.progress * 100;
+        } else if (job.status === 'completed') {
+            progress = 100;
+        }
+    }
 
     return (
         <div className="py-4 flex flex-col gap-3 group transition-colors">
