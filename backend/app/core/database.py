@@ -15,7 +15,8 @@ from pathlib import Path
 from typing import Optional, List, Dict
 
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy import select, update
+from sqlalchemy import select, update, event
+from sqlalchemy.engine import Engine
 
 from ..models.sql import Base, Image, Embedding, ClusteringRun
 from .config import DATABASE_URL
@@ -25,6 +26,12 @@ engine = create_async_engine(
     echo=False,
     connect_args={"check_same_thread": False},
 )
+
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA foreign_keys=ON")
+    cursor.close()
 
 AsyncSessionLocal = async_sessionmaker(
     engine,
