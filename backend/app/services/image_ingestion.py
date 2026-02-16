@@ -1,7 +1,7 @@
 import asyncio
 import json
 from pathlib import Path
-from typing import Any, List, Tuple, Dict, TYPE_CHECKING
+from typing import Any, List, Tuple, Dict, Optional, TYPE_CHECKING
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -23,6 +23,9 @@ async def process_directory_for_ingestion(
     thumbnail_dir: Path,
     vector_store: "VectorStoreService",
     progress_callback: Any = None,
+    batch_size: int = 12,
+    image_extensions: Optional[List[str]] = None,
+    embedding_model: Optional[str] = None,
 ) -> None:
     """
     Process a directory for image ingestion.
@@ -34,10 +37,9 @@ async def process_directory_for_ingestion(
         thumbnail_dir: Directory to store thumbnails
         vector_store: VectorStoreService instance
         progress_callback: Optional callback for progress updates
-
-    Raises:
-        PermissionError: If directory access is denied
-        Exception: For other processing errors
+        batch_size: Number of images per batch
+        image_extensions: List of file extensions to include
+        embedding_model: Name of the model to use
     """
     # Scan directory
     dir_path = Path(directory_path)
@@ -50,7 +52,7 @@ async def process_directory_for_ingestion(
             f"Permission denied accessing '{directory_path}'. macOS may be blocking access to Downloads/Documents. Try moving images to Desktop or a different folder."
         ) from e
 
-    image_paths = scan_directory(dir_path)
+    image_paths = scan_directory(dir_path, extensions=image_extensions)
     total = len(image_paths)
 
     if total == 0:
@@ -149,7 +151,7 @@ async def process_directory_for_ingestion(
 
     embeddings, embed_errors = await embed_images_with_progress(
         image_paths_to_embed,
-        batch_size=12,
+        batch_size=batch_size,
         progress_callback=_embed_callback,
     )
 
@@ -182,7 +184,13 @@ async def process_directory_for_ingestion(
         return
 
     # Save to database and Chroma
-    await save_ingested_images(session, valid_thumbnails, valid_embeddings, vector_store)
+    await save_ingested_images(
+        session, 
+        valid_thumbnails, 
+        valid_embeddings, 
+        vector_store,
+        model_name=embedding_model
+    )
     await session.commit()
 
 
@@ -191,6 +199,7 @@ async def save_ingested_images(
     thumbnails_data: List[Tuple[Any, str, str, Dict]],
     embeddings: List[List[float]],
     vector_store: "VectorStoreService",
+    model_name: Optional[str] = None,
 ) -> None:
     """
     Save ingested images and embeddings to database and Chroma.
@@ -200,10 +209,13 @@ async def save_ingested_images(
         thumbnails_data: List of (img_path, file_hash, thumb_path, metadata) tuples
         embeddings: List of embedding vectors
         vector_store: VectorStoreService instance
+        model_name: Optional name of the model used for embeddings
     """
     chroma_ids = []
     chroma_embeddings = []
     chroma_metadatas = []
+
+    actual_model_name = model_name or SIGLIP_MODEL_NAME
 
     for i, (img_path, file_hash, thumb_path, metadata) in enumerate(thumbnails_data):
         if i >= len(embeddings):
@@ -211,7 +223,7 @@ async def save_ingested_images(
 
         embedding = Embedding(
             vector=json.dumps(embeddings[i]),
-            model_name=SIGLIP_MODEL_NAME,
+            model_name=actual_model_name,
         )
         session.add(embedding)
         await session.flush()
