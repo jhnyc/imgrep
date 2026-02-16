@@ -208,14 +208,15 @@ class DirectorySyncService:
             
             output = []
             for d in directories:
-                count = 0
+                # 1. Total files expected (from sync strategy tables)
+                total_count = 0
                 if d.sync_strategy == "snapshot":
                     count_res = await session.execute(
                         select(func.count()).select_from(DirectorySnapshot).where(
                             DirectorySnapshot.tracked_directory_id == d.id
                         )
                     )
-                    count = count_res.scalar()
+                    total_count = count_res.scalar() or 0
                 elif d.sync_strategy == "merkle":
                     count_res = await session.execute(
                         select(func.count()).select_from(MerkleNode).where(
@@ -223,9 +224,19 @@ class DirectorySyncService:
                             MerkleNode.node_type == "file"
                         )
                     )
-                    count = count_res.scalar()
+                    total_count = count_res.scalar() or 0
                 
-                output.append(self._tracked_dir_to_dict(d, count))
+                # 2. Files actually indexed with embeddings (from Image table)
+                path_prefix = d.path if d.path.endswith('/') else d.path + '/'
+                indexed_res = await session.execute(
+                    select(func.count()).select_from(Image).where(
+                        Image.file_path.like(f"{path_prefix}%"),
+                        Image.embedding_id.isnot(None)
+                    )
+                )
+                processed_count = indexed_res.scalar() or 0
+                
+                output.append(self._tracked_dir_to_dict(d, total_count, processed_count))
             
             return output
 
@@ -239,14 +250,15 @@ class DirectorySyncService:
             if not tracked_dir:
                 return None
             
-            count = 0
+            # Total count
+            total_count = 0
             if tracked_dir.sync_strategy == "snapshot":
                 count_res = await session.execute(
                     select(func.count()).select_from(DirectorySnapshot).where(
                         DirectorySnapshot.tracked_directory_id == tracked_dir.id
                     )
                 )
-                count = count_res.scalar()
+                total_count = count_res.scalar() or 0
             elif tracked_dir.sync_strategy == "merkle":
                 count_res = await session.execute(
                     select(func.count()).select_from(MerkleNode).where(
@@ -254,13 +266,22 @@ class DirectorySyncService:
                         MerkleNode.node_type == "file"
                     )
                 )
-                count = count_res.scalar()
+                total_count = count_res.scalar() or 0
+            
+            # Processed count
+            path_prefix = tracked_dir.path if tracked_dir.path.endswith('/') else tracked_dir.path + '/'
+            indexed_res = await session.execute(
+                select(func.count()).select_from(Image).where(
+                    Image.file_path.like(f"{path_prefix}%"),
+                    Image.embedding_id.isnot(None)
+                )
+            )
+            processed_count = indexed_res.scalar() or 0
                 
-            return self._tracked_dir_to_dict(tracked_dir, count)
+            return self._tracked_dir_to_dict(tracked_dir, total_count, processed_count)
 
-    @staticmethod
-    def _tracked_dir_to_dict(tracked_dir: TrackedDirectory, file_count: int = 0) -> dict:
-        """Convert TrackedDirectory to dict."""
+    def _tracked_dir_to_dict(self, tracked_dir: TrackedDirectory, total_count: int = 0, processed_count: int = 0) -> dict:
+        """Convert TrackedDirectory to dict, including persistent counts."""
         return {
             "id": tracked_dir.id,
             "path": tracked_dir.path,
@@ -270,7 +291,9 @@ class DirectorySyncService:
             "last_error": tracked_dir.last_error,
             "sync_interval_seconds": tracked_dir.sync_interval_seconds,
             "created_at": tracked_dir.created_at.isoformat(),
-            "file_count": file_count,
+            "file_count": total_count,
+            "total_count": total_count,
+            "processed_count": processed_count,
         }
 
     async def sync_directory(self, directory_id: int, job_id: Optional[str] = None) -> SyncResult:

@@ -174,21 +174,18 @@ export function SettingsDialog({
         { id: 'clustering', label: 'Clustering', icon: Layers },
     ];
 
+    const trackedDirectories = directoriesData?.directories || [];
     const activeJobs = jobsData?.jobs.filter(j => j.status === 'processing' || j.status === 'pending') || [];
-    
-    useEffect(() => {
-        if (open && activeJobs.length > 0) {
-            console.log("[DEBUG] Active Jobs:", activeJobs);
-        }
-    }, [open, activeJobs]);
 
-    const totalProcessed = activeJobs.reduce((acc, job) => acc + (job.processed || 0), 0);
-    const totalImages = activeJobs.reduce((acc, job) => acc + (job.total || 0), 0);
-    // Use job.progress as fallback if processed/total are zero
-    const averageProgress = activeJobs.length > 0 
-        ? (activeJobs.reduce((acc, job) => acc + (job.progress || 0), 0) / activeJobs.length) * 100 
-        : 0;
-    const overallProgress = totalImages > 0 ? (totalProcessed / totalImages) * 100 : averageProgress;
+    // Calculate overall progress from database counts
+    const totalProcessed = trackedDirectories.reduce((acc, dir) => acc + dir.processed_count, 0);
+    const totalImages = trackedDirectories.reduce((acc, dir) => acc + dir.total_count, 0);
+    
+    // We only show overall progress if there's an actual active sync happening
+    const isSyncingWorkspace = activeJobs.length > 0;
+    const overallProgress = totalImages > 0 ? (totalProcessed / totalImages) * 100 : 0;
+
+    
 
     return (
         <>
@@ -247,7 +244,7 @@ export function SettingsDialog({
                                                     <p className="text-[13px] text-gray-500">Manage the folders indexed in your workspace.</p>
                                                 </div>
 
-                                                {activeJobs.length > 0 && (
+                                                {isSyncingWorkspace && (
                                                     <div className="p-4 bg-blue-50/50 rounded-lg border border-blue-100 space-y-3">
                                                         <div className="flex justify-between items-end">
                                                             <div className="space-y-0.5">
@@ -283,13 +280,10 @@ export function SettingsDialog({
                                                 </div>
 
                                                 <div className="divide-y divide-gray-100 border-t border-gray-100">
-                                                    {directoriesData?.directories.map((dir) => {
-                                                        // Robust path matching: normalize trailing slashes and handle exact matches
-                                                        const normalizedDirPath = dir.path.replace(/\/$/, '');
+                                                    {trackedDirectories.map((dir) => {
                                                         const dirJob = activeJobs.find(j => {
                                                             if (!j.directory_path) return false;
-                                                            const normalizedJobPath = j.directory_path.replace(/\/$/, '');
-                                                            return normalizedJobPath === normalizedDirPath;
+                                                            return j.directory_path.replace(/\/$/, '') === dir.path.replace(/\/$/, '');
                                                         });
 
                                                         return (
@@ -301,7 +295,7 @@ export function SettingsDialog({
                                                             />
                                                         );
                                                     })}
-                                                    {directoriesData?.directories.length === 0 && (
+                                                    {trackedDirectories.length === 0 && (
                                                         <div className="py-10 text-center text-gray-400 text-[13px]">
                                                             No folders connected yet.
                                                         </div>
@@ -546,20 +540,13 @@ export function SettingsDialog({
 }
 
 function DirectoryItem({ directory, job, onRemove }: { directory: TrackedDirectory, job?: JobStatus, onRemove: (id: number) => void }) {
-    // Normalizing paths for matching (handle trailing slashes)
-    const isProcessing = job && (job.status === 'processing' || job.status === 'pending');
+    // isProcessing is true if there's an active background job
+    const isSyncing = job && (job.status === 'processing' || job.status === 'pending');
     
-    // Calculate progress with fallbacks
-    let progress = 0;
-    if (job) {
-        if (job.total > 0) {
-            progress = (job.processed / job.total) * 100;
-        } else if (job.progress > 0) {
-            progress = job.progress * 100;
-        } else if (job.status === 'completed') {
-            progress = 100;
-        }
-    }
+    // We get actual progress from the database counts provided by the backend
+    const processed = directory.processed_count;
+    const total = directory.total_count;
+    const progress = total > 0 ? (processed / total) * 100 : 0;
 
     return (
         <div className="py-4 flex flex-col gap-3 group transition-colors">
@@ -567,7 +554,7 @@ function DirectoryItem({ directory, job, onRemove }: { directory: TrackedDirecto
                 <div className="flex items-center gap-3 min-w-0">
                     <div className={cn(
                         "p-1.5 rounded bg-gray-50 text-gray-400 shrink-0",
-                        isProcessing && "text-blue-500 bg-blue-50 animate-pulse"
+                        isSyncing && "text-blue-500 bg-blue-50 animate-pulse"
                     )}>
                         <HardDrive size={16} />
                     </div>
@@ -576,14 +563,14 @@ function DirectoryItem({ directory, job, onRemove }: { directory: TrackedDirecto
                         <div className="text-[12px] text-gray-500 mt-0.5 flex items-center gap-2">
                             <span className="capitalize">{directory.sync_strategy} sync</span>
                             <span>•</span>
-                            <span>{directory.file_count ? `${directory.file_count} files` : '0 files'}</span>
-                            {directory.last_synced_at && !isProcessing && (
+                            <span>{total.toLocaleString()} files</span>
+                            {directory.last_synced_at && !isSyncing && (
                                 <>
                                     <span>•</span>
                                     <span>Last synced: {new Date(directory.last_synced_at).toLocaleString()}</span>
                                 </>
                             )}
-                            {isProcessing && (
+                            {isSyncing && (
                                 <>
                                     <span>•</span>
                                     <span className="text-blue-600 font-medium animate-pulse">Syncing...</span>
@@ -592,30 +579,41 @@ function DirectoryItem({ directory, job, onRemove }: { directory: TrackedDirecto
                         </div>
                     </div>
                 </div>
-                {isProcessing ? (
-                    <div className="flex items-center gap-3 shrink-0">
+                <div className="flex items-center gap-3 shrink-0">
+                    {(isSyncing || (processed < total && total > 0)) && (
                         <div className="text-right">
                             <div className="text-[12px] font-bold text-blue-600">
                                 {Math.round(progress)}%
                             </div>
-                            <div className="text-[10px] text-blue-400 font-medium">
-                                {job.processed} / {job.total}
-                            </div>
+                            {total > 0 ? (
+                                <div className="text-[10px] text-blue-400 font-medium">
+                                    {processed.toLocaleString()} / {total.toLocaleString()}
+                                </div>
+                            ) : (
+                                <div className="text-[10px] text-blue-400 font-medium animate-pulse">
+                                    Scanning...
+                                </div>
+                            )}
                         </div>
+                    )}
+                    
+                    {isSyncing ? (
                         <Loader2 size={14} className="animate-spin text-blue-500" />
-                    </div>
-                ) : (
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all font-medium text-[12px]"
-                        onClick={() => onRemove(directory.id)}
-                    >
-                        Disconnect
-                    </Button>
-                )}
+                    ) : (processed < total && total > 0) ? (
+                        <div className="w-3.5 h-3.5 rounded-full border-2 border-blue-100 border-t-blue-500" />
+                    ) : (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all font-medium text-[12px]"
+                            onClick={() => onRemove(directory.id)}
+                        >
+                            Disconnect
+                        </Button>
+                    )}
+                </div>
             </div>
-            {isProcessing && (
+            {(isSyncing || (processed < total && total > 0)) && (
                 <div className="space-y-1.5">
                     <Progress value={progress} className="h-1 bg-blue-100" />
                 </div>

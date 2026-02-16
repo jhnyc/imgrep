@@ -48,6 +48,8 @@ class TrackedDirectoryResponse(BaseModel):
     sync_interval_seconds: int
     created_at: str
     file_count: Optional[int] = None
+    processed_count: int = 0
+    total_count: int = 0
 
 
 class TrackedDirectoryListResponse(BaseModel):

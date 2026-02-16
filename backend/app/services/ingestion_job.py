@@ -31,12 +31,14 @@ class IngestionJobService:
 
     def init_job(self, job_id: str) -> None:
         """Initialize a new job"""
+        import time
         self._active_jobs[job_id] = {
             "status": "pending",
             "progress": 0.0,
             "total": 0,
             "processed": 0,
             "errors": [],
+            "created_at": time.time(),
         }
 
     def get_job_status(self, job_id: str) -> Optional[Dict[str, Any]]:

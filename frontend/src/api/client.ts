@@ -21,6 +21,8 @@ export interface TrackedDirectory {
   sync_interval_seconds: number;
   created_at: string;
   file_count?: number;
+  processed_count: number;
+  total_count: number;
 }
 
 export interface ClusterNode {
