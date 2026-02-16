@@ -5,6 +5,12 @@ import {
     Dialog,
     DialogContent
 } from "@/components/ui/dialog";
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -19,7 +25,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { FolderPlus, Globe, HardDrive, Layers, Loader2, Settings, Sliders } from "lucide-react";
+import { FolderPlus, Globe, HardDrive, Layers, Loader2, MoreVertical, Settings, Sliders } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ToolbarButton } from "./ToolbarButton";
 
@@ -168,8 +174,18 @@ export function SettingsDialog({
         }
     };
 
+    const handleReindexDirectory = async (id: number) => {
+        try {
+            await api.syncTrackedDirectory(id);
+            // We force a refetch to verify status
+            refetchDirs();
+        } catch (error) {
+            console.error(error);
+        }
+    };
+
     const sidebarItems = [
-        { id: 'general', label: 'My settings', icon: Globe },
+        { id: 'general', label: 'General', icon: Globe },
         { id: 'configuration', label: 'Settings', icon: Sliders },
         { id: 'clustering', label: 'Clustering', icon: Layers },
     ];
@@ -180,12 +196,12 @@ export function SettingsDialog({
     // Calculate overall progress from database counts
     const totalProcessed = trackedDirectories.reduce((acc, dir) => acc + dir.processed_count, 0);
     const totalImages = trackedDirectories.reduce((acc, dir) => acc + dir.total_count, 0);
-    
+
     // We only show overall progress if there's an actual active sync happening
     const isSyncingWorkspace = activeJobs.length > 0;
     const overallProgress = totalImages > 0 ? (totalProcessed / totalImages) * 100 : 0;
 
-    
+
 
     return (
         <>
@@ -244,23 +260,61 @@ export function SettingsDialog({
                                                     <p className="text-[13px] text-gray-500">Manage the folders indexed in your workspace.</p>
                                                 </div>
 
-                                                {isSyncingWorkspace && (
-                                                    <div className="p-4 bg-blue-50/50 rounded-lg border border-blue-100 space-y-3">
+                                                {totalImages > 0 && (
+                                                    <div className={cn(
+                                                        "p-4 rounded-lg border space-y-3 transition-colors",
+                                                        isSyncingWorkspace
+                                                            ? "bg-blue-50/50 border-blue-100"
+                                                            : "bg-gray-50/50 border-gray-100"
+                                                    )}>
                                                         <div className="flex justify-between items-end">
                                                             <div className="space-y-0.5">
-                                                                <div className="text-[13px] font-semibold text-blue-900">Syncing workspace...</div>
-                                                                <div className="text-[12px] text-blue-700/70">
-                                                                    {totalProcessed.toLocaleString()} of {totalImages.toLocaleString()} images processed
+                                                                <div className={cn(
+                                                                    "text-[12px]",
+                                                                    isSyncingWorkspace ? "text-blue-700/70" : "text-gray-500"
+                                                                )}>
+                                                                    {totalProcessed.toLocaleString()} of {totalImages.toLocaleString()} images indexed
                                                                 </div>
                                                             </div>
-                                                            <div className="text-[14px] font-bold text-blue-900">
+                                                            <div className={cn(
+                                                                "text-[14px] font-bold",
+                                                                isSyncingWorkspace ? "text-blue-900" : "text-gray-900"
+                                                            )}>
                                                                 {Math.round(overallProgress)}%
                                                             </div>
                                                         </div>
-                                                        <Progress value={overallProgress} className="h-2 bg-blue-100" />
+                                                        <Progress
+                                                            value={overallProgress}
+                                                            className={cn(
+                                                                "h-2",
+                                                                isSyncingWorkspace ? "bg-blue-100" : "bg-gray-200"
+                                                            )}
+                                                        />
                                                     </div>
                                                 )}
+                                                <div className="divide-y divide-gray-100 border-t border-gray-100">
+                                                    {trackedDirectories.map((dir) => {
+                                                        const dirJob = activeJobs.find(j => {
+                                                            if (!j.directory_path) return false;
+                                                            return j.directory_path.replace(/\/$/, '') === dir.path.replace(/\/$/, '');
+                                                        });
 
+                                                        return (
+                                                            <DirectoryItem
+                                                                key={dir.id}
+                                                                directory={dir}
+                                                                job={dirJob}
+                                                                onRemove={handleRemoveDirectory}
+                                                                onReindex={handleReindexDirectory}
+                                                            />
+                                                        );
+                                                    })}
+                                                    {trackedDirectories.length === 0 && (
+                                                        <div className="py-10 text-center text-gray-400 text-[13px]">
+                                                            No folders connected yet.
+                                                        </div>
+                                                    )}
+                                                </div>
                                                 <div className="flex gap-2">
                                                     <Input
                                                         placeholder="Add local directory path..."
@@ -277,29 +331,6 @@ export function SettingsDialog({
                                                         {isAddingDir ? <Loader2 size={14} className="animate-spin" /> : <FolderPlus size={14} />}
                                                         Add folder
                                                     </Button>
-                                                </div>
-
-                                                <div className="divide-y divide-gray-100 border-t border-gray-100">
-                                                    {trackedDirectories.map((dir) => {
-                                                        const dirJob = activeJobs.find(j => {
-                                                            if (!j.directory_path) return false;
-                                                            return j.directory_path.replace(/\/$/, '') === dir.path.replace(/\/$/, '');
-                                                        });
-
-                                                        return (
-                                                            <DirectoryItem
-                                                                key={dir.id}
-                                                                directory={dir}
-                                                                job={dirJob}
-                                                                onRemove={handleRemoveDirectory}
-                                                            />
-                                                        );
-                                                    })}
-                                                    {trackedDirectories.length === 0 && (
-                                                        <div className="py-10 text-center text-gray-400 text-[13px]">
-                                                            No folders connected yet.
-                                                        </div>
-                                                    )}
                                                 </div>
                                             </div>
                                         </div>
@@ -539,10 +570,10 @@ export function SettingsDialog({
     );
 }
 
-function DirectoryItem({ directory, job, onRemove }: { directory: TrackedDirectory, job?: JobStatus, onRemove: (id: number) => void }) {
+function DirectoryItem({ directory, job, onRemove, onReindex }: { directory: TrackedDirectory, job?: JobStatus, onRemove: (id: number) => void, onReindex: (id: number) => void }) {
     // isProcessing is true if there's an active background job
     const isSyncing = job && (job.status === 'processing' || job.status === 'pending');
-    
+
     // We get actual progress from the database counts provided by the backend
     const processed = directory.processed_count;
     const total = directory.total_count;
@@ -585,32 +616,34 @@ function DirectoryItem({ directory, job, onRemove }: { directory: TrackedDirecto
                             <div className="text-[12px] font-bold text-blue-600">
                                 {Math.round(progress)}%
                             </div>
-                            {total > 0 ? (
-                                <div className="text-[10px] text-blue-400 font-medium">
-                                    {processed.toLocaleString()} / {total.toLocaleString()}
-                                </div>
-                            ) : (
-                                <div className="text-[10px] text-blue-400 font-medium animate-pulse">
-                                    Scanning...
-                                </div>
-                            )}
                         </div>
                     )}
-                    
-                    {isSyncing ? (
-                        <Loader2 size={14} className="animate-spin text-blue-500" />
-                    ) : (processed < total && total > 0) ? (
-                        <div className="w-3.5 h-3.5 rounded-full border-2 border-blue-100 border-t-blue-500" />
-                    ) : (
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 text-gray-400 hover:text-red-600 hover:bg-red-50 opacity-0 group-hover:opacity-100 transition-all font-medium text-[12px]"
-                            onClick={() => onRemove(directory.id)}
-                        >
-                            Disconnect
-                        </Button>
-                    )}
+
+                    <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 w-7 p-0 text-gray-400 hover:text-gray-600 hover:bg-gray-100 data-[state=open]:bg-gray-100 opacity-0 group-hover:opacity-100 data-[state=open]:opacity-100 transition-all rounded-full"
+                            >
+                                <MoreVertical size={16} />
+                            </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-[160px]">
+                            <DropdownMenuItem
+                                onClick={() => onReindex(directory.id)}
+                                disabled={!!isSyncing}
+                            >
+                                Reindex now
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                onClick={() => onRemove(directory.id)}
+                                className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                            >
+                                Disconnect
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                 </div>
             </div>
             {(isSyncing || (processed < total && total > 0)) && (

@@ -169,6 +169,14 @@ export const api = {
     return response.json();
   },
 
+  syncTrackedDirectory: async (directoryId: number) => {
+    const response = await fetch(`${API_BASE}/api/directories/tracked/${directoryId}/sync`, {
+        method: 'POST',
+    });
+    if (!response.ok) throw new Error('Failed to sync directory');
+    return response.json();
+  },
+
   // Clusters
   getClusters: async (strategy = 'hdbscan', projection_strategy = 'umap', overlap_strategy = 'none', forceRecompute = false): Promise<ClustersResponse> => {
     const params = new URLSearchParams({
