@@ -249,8 +249,8 @@ export function SettingsDialog({
                                 </h1>
                             </div>
 
-                            <ScrollArea className="flex-1 px-10 pb-10">
-                                <div className="max-w-[700px] space-y-10">
+                            <ScrollArea className="flex-1 min-h-0">
+                                <div className="px-10 pb-10 max-w-[700px] space-y-10">
                                     {activeTab === 'general' && (
                                         <div className="space-y-10">
                                             {/* Tracked Directories */}
