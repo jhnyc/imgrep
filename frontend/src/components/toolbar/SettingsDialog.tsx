@@ -629,16 +629,17 @@ function DirectoryItem({ directory, job, onRemove, onReindex }: { directory: Tra
                                 <MoreVertical size={16} />
                             </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-[160px]">
+                        <DropdownMenuContent align="end" className="w-[160px] bg-white border-gray-200 shadow-xl z-[100]">
                             <DropdownMenuItem
                                 onClick={() => onReindex(directory.id)}
                                 disabled={!!isSyncing}
+                                className="focus:bg-gray-100 cursor-pointer text-gray-700"
                             >
                                 Reindex now
                             </DropdownMenuItem>
                             <DropdownMenuItem
                                 onClick={() => onRemove(directory.id)}
-                                className="text-red-600 focus:text-red-600 focus:bg-red-50"
+                                className="text-red-600 focus:text-red-600 focus:bg-red-50 cursor-pointer"
                             >
                                 Disconnect
                             </DropdownMenuItem>
