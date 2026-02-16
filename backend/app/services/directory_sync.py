@@ -339,6 +339,7 @@ class DirectorySyncService:
         job_id: Optional[str] = None,
     ) -> None:
         """Process changes from sync result - index new/modified images, handle deletions."""
+        dir_path_str = tracked_dir.path if tracked_dir.path else "unknown path"
         try:
             if sync_result.deleted:
                 await self._handle_deleted_files(tracked_dir, sync_result.deleted, session)
@@ -352,10 +353,11 @@ class DirectorySyncService:
             tracked_dir.last_error = None
             
             await session.commit()
-            print(f"[INFO] Sync completed for {tracked_dir.path}")
+            print(f"[INFO] Sync completed for {dir_path_str}")
         except Exception as e:
             await session.rollback()
-            print(f"[ERROR] Failed to process sync changes for {tracked_dir.path}: {e}")
+            # Use pre-captured path string to avoid greenlet/IO error on expired object
+            print(f"[ERROR] Failed to process sync changes for {dir_path_str}: {e}")
             raise
 
     async def _handle_deleted_files(
@@ -382,20 +384,25 @@ class DirectorySyncService:
                 except Exception as e:
                     print(f"[ERROR] Failed to delete from Chroma: {e}")
 
-                # Clean up assignments
+                # Clean up assignments first
                 from ..models.sql import ClusterAssignment
                 await session.execute(
                     delete(ClusterAssignment).where(ClusterAssignment.image_id == image.id)
                 )
 
+                # Capture embedding ID to delete later
+                embedding_id = image.embedding_id
+
+                # Delete image to resolve foreign key constraint
+                await session.delete(image)
+                await session.flush()  # Flush to apply delete
+
                 # Clean up embedding if it exists
-                if image.embedding_id:
+                if embedding_id:
                     from ..models.sql import Embedding
                     await session.execute(
-                        delete(Embedding).where(Embedding.id == image.embedding_id)
+                        delete(Embedding).where(Embedding.id == embedding_id)
                     )
-
-                await session.delete(image)
 
     async def _index_files(
         self,
