@@ -30,7 +30,7 @@ class SyncStrategy(ABC):
     """Abstract base class for sync strategies"""
 
     @abstractmethod
-    async def sync(self, tracked_dir: TrackedDirectory, session: AsyncSession) -> SyncResult:
+    async def sync(self, tracked_dir: TrackedDirectory, session: AsyncSession, extensions: Optional[List[str]] = None) -> SyncResult:
         """Synchronize a tracked directory."""
         pass
 
@@ -48,7 +48,7 @@ class SnapshotSyncStrategy(SyncStrategy):
     Efficient for most use cases - uses mtime/size as quick change detection.
     """
 
-    async def sync(self, tracked_dir: TrackedDirectory, session: AsyncSession) -> SyncResult:
+    async def sync(self, tracked_dir: TrackedDirectory, session: AsyncSession, extensions: Optional[List[str]] = None) -> SyncResult:
         start_time = time.time()
         dir_path = Path(tracked_dir.path).expanduser().resolve()
         errors = []
@@ -64,7 +64,7 @@ class SnapshotSyncStrategy(SyncStrategy):
             )
 
         existing_snapshots = await self._load_snapshots(tracked_dir.id, session)
-        current_files = await self._scan_files(dir_path)
+        current_files = await self._scan_files(dir_path, extensions)
 
         added, modified, unchanged, errors = self._detect_changes(
             current_files, existing_snapshots
@@ -99,10 +99,19 @@ class SnapshotSyncStrategy(SyncStrategy):
         )
         return {s.relative_path: s for s in result.scalars().all()}
 
-    async def _scan_files(self, dir_path: Path) -> Dict[str, dict]:
+    async def _scan_files(self, dir_path: Path, extensions: Optional[List[str]] = None) -> Dict[str, dict]:
+        import asyncio
+        loop = asyncio.get_event_loop()
+        
+        # Run synchronous scan_directory in a separate thread to avoid blocking the event loop
+        # and potentially causing issues with async DB operations if they compete
+        image_paths = await loop.run_in_executor(None, scan_directory, dir_path, extensions)
+        
         current_files = {}
-        for img_path in scan_directory(dir_path):
+        for img_path in image_paths:
             try:
+                # stat() is also IO bound, but fast. Doing it in bulk might be better in thread, 
+                # but let's start with scan_directory which walks the tree.
                 stat = img_path.stat()
                 relative_path = str(img_path.relative_to(dir_path))
                 current_files[relative_path] = {
@@ -233,6 +242,7 @@ class MerkleSyncStrategy(SyncStrategy):
         relative_path: str = "",
         tracked_dir_id: int = 0,
         parent_id: Optional[int] = None,
+        extensions: Optional[List[str]] = None,
     ) -> Tuple[str, List[Dict]]:
         node_data_list = []
         child_hashes = []
@@ -247,12 +257,12 @@ class MerkleSyncStrategy(SyncStrategy):
 
             if item.is_dir():
                 subtree_hash, subtree_nodes = await self._build_merkle_tree(
-                    item, item_relative, tracked_dir_id, None
+                    item, item_relative, tracked_dir_id, None, extensions
                 )
                 if subtree_hash:
                     child_hashes.append(subtree_hash)
                     node_data_list.extend(subtree_nodes)
-            elif is_image_path(item):
+            elif is_image_path(item) and (not extensions or item.suffix.lower() in extensions):
                 try:
                     file_hash = compute_file_hash(item)
                     stat = item.stat()
@@ -299,6 +309,7 @@ class MerkleSyncStrategy(SyncStrategy):
         self,
         dir_path: Path,
         existing_tree: Dict[str, MerkleNode],
+        extensions: Optional[List[str]] = None,
     ) -> Tuple[List[Path], List[str]]:
         added = []
         deleted = []
@@ -321,7 +332,7 @@ class MerkleSyncStrategy(SyncStrategy):
                     child_hash = traverse(item, item_relative)
                     if child_hash:
                         child_hashes.append(child_hash)
-                elif is_image_path(item):
+                elif is_image_path(item) and (not extensions or item.suffix.lower() in extensions):
                     existing_node = existing_tree.get(item_relative)
                     file_hash = compute_file_hash(item)
 
@@ -338,7 +349,7 @@ class MerkleSyncStrategy(SyncStrategy):
         traverse(dir_path)
         return added, deleted
 
-    async def sync(self, tracked_dir: TrackedDirectory, session: AsyncSession) -> SyncResult:
+    async def sync(self, tracked_dir: TrackedDirectory, session: AsyncSession, extensions: Optional[List[str]] = None) -> SyncResult:
         start_time = time.time()
         dir_path = Path(tracked_dir.path).expanduser().resolve()
         errors = []
@@ -357,10 +368,10 @@ class MerkleSyncStrategy(SyncStrategy):
             existing_tree = await self._load_existing_tree(tracked_dir.id, session)
 
             if not existing_tree:
-                return await self._initial_sync(tracked_dir, dir_path, session, start_time)
+                return await self._initial_sync(tracked_dir, dir_path, session, start_time, extensions)
 
-            added, deleted = await self._compare_trees(dir_path, existing_tree)
-            await self._rebuild_tree(tracked_dir, dir_path, session)
+            added, deleted = await self._compare_trees(dir_path, existing_tree, extensions)
+            await self._rebuild_tree(tracked_dir, dir_path, session, extensions)
 
             return SyncResult(
                 tracked_directory_id=tracked_dir.id,
@@ -389,9 +400,10 @@ class MerkleSyncStrategy(SyncStrategy):
         dir_path: Path,
         session: AsyncSession,
         start_time: float,
+        extensions: Optional[List[str]] = None,
     ) -> SyncResult:
         root_hash, node_data_list = await self._build_merkle_tree(
-            dir_path, "", tracked_dir.id
+            dir_path, "", tracked_dir.id, None, extensions
         )
 
         for node_data in node_data_list:
@@ -419,6 +431,7 @@ class MerkleSyncStrategy(SyncStrategy):
         tracked_dir: TrackedDirectory,
         dir_path: Path,
         session: AsyncSession,
+        extensions: Optional[List[str]] = None,
     ) -> None:
         await session.execute(
             delete(MerkleNode).where(
@@ -427,7 +440,7 @@ class MerkleSyncStrategy(SyncStrategy):
         )
 
         root_hash, node_data_list = await self._build_merkle_tree(
-            dir_path, "", tracked_dir.id
+            dir_path, "", tracked_dir.id, None, extensions
         )
 
         for node_data in node_data_list:

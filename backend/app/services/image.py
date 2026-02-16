@@ -8,17 +8,36 @@ import json
 from ..core.config import THUMBNAIL_SIZE, IMAGE_EXTENSIONS, THUMBNAILS_DIR
 
 
-def scan_directory(directory_path: Path) -> List[Path]:
+def scan_directory(directory_path: Path, extensions: Optional[List[str]] = None) -> List[Path]:
     """Recursively scan directory for image files"""
     if not directory_path.is_dir():
         raise ValueError(f"Not a directory: {directory_path}")
 
+    ext_list = extensions if extensions else list(IMAGE_EXTENSIONS)
+    # Ensure extensions start with dot and are lower case for robust matching if needed, 
+    # but glob is case sensitive on some OS.
+    # rglob is recursive.
+    
     image_paths = []
-    for ext in IMAGE_EXTENSIONS:
-        image_paths.extend(directory_path.rglob(f"*{ext}"))
-        image_paths.extend(directory_path.rglob(f"*{ext.upper()}"))
+    # Use set to avoid duplicates if extensions overlap or casing differs
+    seen_paths = set()
+    
+    for ext in ext_list:
+        # Handle case variations if needed, but simple rglob is usually enough
+        # We try both lower and upper case to cover most bases
+        patterns = [f"*{ext}", f"*{ext.upper()}"]
+        if ext.startswith("."):
+             patterns = [f"*{ext}", f"*{ext.upper()}"]
+        else:
+             patterns = [f"*.{ext}", f"*.{ext.upper()}"]
 
-    return sorted(set(image_paths))
+        for pattern in patterns:
+            for path in directory_path.rglob(pattern):
+                if path.is_file() and str(path) not in seen_paths:
+                    image_paths.append(path)
+                    seen_paths.add(str(path))
+
+    return sorted(image_paths)
 
 
 def compute_file_hash(file_path: Path) -> str:
